@@ -229,7 +229,7 @@
     const CONFIG = {
       LIFF_ID: "2011831930-6IzeMDOS",              // จาก LINE Developers > LIFF
       API_URL: "https://script.google.com/macros/s/AKfycby_XfXNTL7M71tnSuEeDxUxYPq8eZL0nyJv8PMwcOcngN-RXiUWYsR3K2BRL74qJycO7Q/exec",              // URL Web App ของ Google Apps Script (Code.gs)
-      CHECKIN_RADIUS_KM: 9999      // ต้องอยู่ห่างอุทยานไม่เกินกี่ กม. ถึงเช็กอินได้
+      CHECKIN_RADIUS_KM: 0      // 0 = เช็กอินได้ทุกที่ ไม่จำกัดระยะ (ใส่ตัวเลข กม. ถ้าต้องการจำกัด)
     };
 
     /* ===== สถานะ ===== */
@@ -471,12 +471,14 @@
 
     $("checkinButton").addEventListener("click", async () => {
       if (!me) return login();
-      if (!userPos) return showToast("ต้องเปิดตำแหน่งก่อนเช็กอิน");
-      const d = haversine(userPos.lat, userPos.lng, selected.lat, selected.lng);
-      if (d > CONFIG.CHECKIN_RADIUS_KM) return showToast(`ต้องอยู่ห่างอุทยานไม่เกิน ${CONFIG.CHECKIN_RADIUS_KM} กม. (ตอนนี้ ${fmtKm(d)})`);
+      if (CONFIG.CHECKIN_RADIUS_KM > 0) {
+        if (!userPos) return showToast("ต้องเปิดตำแหน่งก่อนเช็กอิน");
+        const d = haversine(userPos.lat, userPos.lng, selected.lat, selected.lng);
+        if (d > CONFIG.CHECKIN_RADIUS_KM) return showToast(`ต้องอยู่ห่างอุทยานไม่เกิน ${CONFIG.CHECKIN_RADIUS_KM} กม. (ตอนนี้ ${fmtKm(d)})`);
+      }
       const btn = $("checkinButton"); btn.disabled = true;
       try {
-        await api("checkin", { parkId: selected.id, parkName: selected.name, lat: userPos.lat, lng: userPos.lng, plat: selected.lat, plng: selected.lng }, true);
+        await api("checkin", { parkId: selected.id, parkName: selected.name, lat: userPos?.lat, lng: userPos?.lng, plat: selected.lat, plng: selected.lng }, true);
         showToast("เช็กอินสำเร็จ 🌲");
         await loadCheckins();
       } catch (e) { showToast(e.message); }
