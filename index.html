@@ -97,12 +97,10 @@
     .large-button.primary { color: #153c21; background: var(--primary); border-color: var(--primary); box-shadow: 0 9px 20px rgba(115,220,75,.25); }
     .large-button i { width: 20px; }
 
-    /* รีวิวแสดงผลใน Card */
     .review-section { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
     .review-item { font-size: 13px; margin-bottom: 8px; background: #f9faf9; padding: 8px 12px; border-radius: 12px; }
     .review-item .stars { color: #fbbf24; }
 
-    /* Modal เขียนรีวิว */
     .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 3000; display: none; align-items: center; justify-content: center; padding: 16px; }
     .modal-overlay.show { display: flex; }
     .modal-box { background: #fff; width: 100%; max-width: 400px; padding: 20px; border-radius: 24px; box-shadow: var(--shadow); }
@@ -396,7 +394,6 @@
     $("closeCard").addEventListener("click", closeCard);
     $("locateButton").addEventListener("click", () => locate(false));
 
-    /* ===== จัดการรีวิวสถานที่ ===== */
     let currentRating = 5;
     $("reviewBtn").addEventListener("click", () => {
       if (!me) return showToast("กรุณาเข้าสู่ระบบก่อนรีวิว");
@@ -606,9 +603,9 @@
     function renderMe() {
       const el = $("pageMe");
       if (!me) {
-        el.innerHTML = `<h2>สมาชิก</h2><div class="card" style="text-align:center"><p>เข้าสู่ระบบด้วย LINE เพื่อเช็กอินและดูสถิติของคุณ</p><button class="large-button primary" style="width:100%" id="loginBtn">เข้าสู่ระบบด้วย LINE</button>
-        <p style="margin:16px 0 6px;font-size:13px;color:var(--muted)">หรือวางรหัสเข้าสู่ระบบ</p>
-        <input id="codeInput" placeholder="วางรหัสที่นี่" style="width:100%;height:44px;padding:0 12px;border:1px solid var(--border);border-radius:14px"><button class="large-button" style="width:100%;margin-top:8px" id="codeBtn">ใช้รหัส</button></div>`;
+        el.innerHTML = '<h2>สมาชิก</h2><div class="card" style="text-align:center"><p>เข้าสู่ระบบด้วย LINE เพื่อเช็กอินและดูสถิติของคุณ</p><button class="large-button primary" style="width:100%" id="loginBtn">เข้าสู่ระบบด้วย LINE</button>' +
+          '<p style="margin:16px 0 6px;font-size:13px;color:var(--muted)">หรือวางรหัสเข้าสู่ระบบ</p>' +
+          '<input id="codeInput" placeholder="วางรหัสที่นี่" style="width:100%;height:44px;padding:0 12px;border:1px solid var(--border);border-radius:14px"><button class="large-button" style="width:100%;margin-top:8px" id="codeBtn">ใช้รหัส</button></div>';
         $("loginBtn").onclick = login;
         $("codeBtn").onclick = async () => { try { const t = $("codeInput").value.trim(), j = await api("me", { token: t }); me = { token: t, id: j.uid, name: j.name, pic: j.pic }; saveSession(me); renderMe(); loadCheckins(); } catch (e) { showToast(e.message); } };
         return;
@@ -618,15 +615,23 @@
       const pct = Math.round(per.size / parks.length * 100);
       const list = [...per.entries()].sort((a, b) => b[1].last.localeCompare(a[1].last));
       
-      el.innerHTML = `<h2>สมาชิก</h2>
-        <div class="card"><div class="profile">${avatar(me, "lg")}<div><b style="font-size:18px">${esc(me.name)}</b><br><small style="color:var(--muted)">นักสำรวจอุทยาน</small></div></div>
-          <div class="facts"><div class="fact"><strong>${per.size}</strong><span>อุทยานที่เคยไป</span></div><div class="fact"><strong>${mine.length}</strong><span>เช็กอินทั้งหมด</span></div><div class="fact"><strong>${pct}%</strong><span>จาก ${parks.length} แห่ง</span></div></div>
-          <div class="bar"><div style="width:${pct}%"></div></div></div>
-        <div class="card"><b>อุทยานที่ไปมาแล้ว</b>${list.length ? list.map(([id, o]) => {
+      let listHtml = "";
+      if (list.length > 0) {
+        listHtml = list.map(([id, o]) => {
           const displayName = o.parkName || parks[id]?.name || "อุทยานแห่งชาติ";
-          return `<div class="row"><span class="grow">${esc(displayName)}</span><small>${fmtDate(o.last)}</small><button class="btn-delete-sm" onclick="deleteCheckin(${id})">ลบ</button></div>`;
-        }).join("") : `<p style="color:var(--muted)">${loading ? "กำลังโหลด…" : "ยังไม่เคยเช็กอิน"}</p>`}</div>
-        <button class="large-button" style="width:100%;margin-bottom:10px" id="copyBtn">คัดลอกรหัสเข้าสู่ระบบ</button><button class="large-button" style="width:100%" id="logoutBtn">ออกจากระบบ</button>`;
+          return '<div class="row"><span class="grow">' + esc(displayName) + '</span><small>' + fmtDate(o.last) + '</small><button class="btn-delete-sm" onclick="deleteCheckin(' + id + ')">ลบ</button></div>';
+        }).join("");
+      } else {
+        listHtml = '<p style="color:var(--muted)">' + (loading ? "กำลังโหลด…" : "ยังไม่เคยเช็กอิน") + '</p>';
+      }
+
+      el.innerHTML = '<h2>สมาชิก</h2>' +
+        '<div class="card"><div class="profile">' + avatar(me, "lg") + '<div><b style="font-size:18px">' + esc(me.name) + '</b><br><small style="color:var(--muted)">นักสำรวจอุทยาน</small></div></div>' +
+        '<div class="facts"><div class="fact"><strong>' + per.size + '</strong><span>อุทยานที่เคยไป</span></div><div class="fact"><strong>' + mine.length + '</strong><span>เช็กอินทั้งหมด</span></div><div class="fact"><strong>' + pct + '%</strong><span>จาก ' + parks.length + ' แห่ง</span></div></div>' +
+        '<div class="bar"><div style="width:' + pct + '%"></div></div></div>' +
+        '<div class="card"><b>อุทยานที่ไปมาแล้ว</b>' + listHtml + '</div>' +
+        '<button class="large-button" style="width:100%;margin-bottom:10px" id="copyBtn">คัดลอกรหัสเข้าสู่ระบบ</button>' +
+        '<button class="large-button" style="width:100%" id="logoutBtn">ออกจากระบบ</button>';
       
       $("copyBtn").onclick = async () => { try { await navigator.clipboard.writeText(me.token); showToast("คัดลอกรหัสแล้ว"); } catch (e) {} };
       $("logoutBtn").onclick = () => { clearSession(); try { if (window.liff && liff.isLoggedIn()) liff.logout(); } catch (e) {} location.reload(); };
@@ -637,50 +642,6 @@
       checkins.forEach(c => { const u = m.get(c.uid) || { uid: c.uid, name: c.name, pic: c.pic, total: 0, set: new Set() }; u.total++; u.set.add(Number(c.parkId)); u.name = c.name; u.pic = c.pic; m.set(c.uid, u); });
       const key = u => boardMode === "total" ? u.total : u.set.size;
       const rank = [...m.values()].sort((a, b) => key(b) - key(a) || b.set.size - a.set.size).slice(0, 50);
-      const medals = ["🥇", "🥈", "🥉"];
-      $("pageBoard").innerHTML = `<h2>Leader</h2>
-        <div class="filters"><button class="filter-chip ${boardMode === "total" ? "active" : ""}" data-m="total">เช็กอินมากสุด</button><button class="filter-chip ${boardMode === "parks" ? "active" : ""}" data-m="parks">ไปหลายอุทยานสุด</button></div>
-        <div class="card">${rank.length ? rank.map((u, i) => `<div class="row ${me && u.uid === me.id ? "me" : ""}"><span class="medal">${medals[i] || i + 1}</span>${avatar(u)}<span class="grow">${esc(u.name)}</span><small>${u.total} ครั้ง · ${u.set.size} แห่ง</small></div>`).join("") : `<p style="color:var(--muted)">${loading ? "กำลังโหลด…" : "ยังไม่มีข้อมูลเช็กอิน"}</p>`}</div>`;
-      document.querySelectorAll("#pageBoard .filter-chip").forEach(b => b.onclick = () => { boardMode = b.dataset.m; renderBoard(); });
-    }
-
-    document.querySelectorAll(".nav-item").forEach(b => b.addEventListener("click", () => {
-      const t = b.dataset.tab;
-      document.querySelectorAll(".nav-item").forEach(x => x.classList.toggle("active", x === b));
-      $("pageMe").classList.toggle("show", t === "me");
-      $("pageBoard").classList.toggle("show", t === "board");
-      if (t !== "map") { detailCard.classList.remove("open"); selected = null; }
-      else { render(); setTimeout(() => map.invalidateSize(), 50); }
-      if (t !== "map") loadCheckins(false);
-    }));
-
-    loadData().then(() => {
-      render(); locate(true);
-      const li = initLine();
-      renderMe(); renderBoard();
-      loadCheckins();
-      li.then(() => { renderMe(); if (selected) renderWho(selected); });
-    });
-  </script>
-</body>
-</html>nst list = [...per.entries()].sort((a, b) => b[1].last.localeCompare(a[1].last));
-      
-      el.innerHTML = `<h2>สมาชิก</h2>
-        <div class="card"><div class="profile">${avatar(me, "lg")}<div><b style="font-size:18px">${esc(me.name)}</b><br><small style="color:var(--muted)">นักสำรวจอุทยาน</small></div></div>
-          <div class="facts"><div class="fact"><strong>${per.size}</strong><span>อุทยานที่เคยไป</span></div><div class="fact"><strong>${mine.length}</strong><span>เช็กอินทั้งหมด</span></div><div class="fact"><strong>${pct}%</strong><span>จาก ${parks.length} แห่ง</span></div></div>
-          <div class="bar"><div style="width:${pct}%"></div></div></div>
-        <div class="card"><b>อุทยานที่ไปมาแล้ว</b>${list.length ? list.map(([id, o]) => `<div class="row"><span class="grow">${esc(parks[id]?.name)}</span><small>${fmtDate(o.last)}</small><button class="btn-delete-sm" onclick="deleteCheckin(${id})">ลบ</button></div>`).join("") : `<p style="color:var(--muted)">${loading ? "กำลังโหลด…" : "ยังไม่เคยเช็กอิน"}</p>`}</div>
-        <button class="large-button" style="width:100%;margin-bottom:10px" id="copyBtn">คัดลอกรหัสเข้าสู่ระบบ</button><button class="large-button" style="width:100%" id="logoutBtn">ออกจากระบบ</button>`;
-      
-      $("copyBtn").onclick = async () => { try { await navigator.clipboard.writeText(me.token); showToast("คัดลอกรหัสแล้ว"); } catch (e) {} };
-      $("logoutBtn").onclick = () => { clearSession(); try { if (window.liff && liff.isLoggedIn()) liff.logout(); } catch (e) {} location.reload(); };
-    }
-
-    function renderBoard() {
-      const m = new Map();
-      checkins.forEach(c => { const u = m.get(c.uid) || { uid: c.uid, name: c.name, pic: c.pic, total: 0, set: new Set() }; u.total++; u.set.add(Number(c.parkId)); u.name = c.name; u.pic = c.pic; m.set(c.uid, u); });
-      const key = u => boardMode === "total" ? u.total : u.set.size;
-      const rank = [...m.values()].sort((a, b) => key(b) - key(b) || b.set.size - a.set.size).slice(0, 50);
       const medals = ["🥇", "🥈", "🥉"];
       $("pageBoard").innerHTML = `<h2>Leader</h2>
         <div class="filters"><button class="filter-chip ${boardMode === "total" ? "active" : ""}" data-m="total">เช็กอินมากสุด</button><button class="filter-chip ${boardMode === "parks" ? "active" : ""}" data-m="parks">ไปหลายอุทยานสุด</button></div>
