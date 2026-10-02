@@ -424,9 +424,10 @@
     });
 
     /* ===== LINE login + เช็กอิน + สมาชิก + Leader ===== */
-    let me = null, checkins = [], boardMode = "total";
+    let me = null, checkins = [], boardMode = "total", lastFetch = 0, loading = false;
+    try { checkins = JSON.parse(localStorage.getItem("pk_checkins")) || []; } catch (e) {}
     const esc = t => String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-    const avatar = (u, cls = "") => /^https:\/\//.test(u.pic || "") ? `<img class="avatar ${cls}" src="${esc(u.pic)}" alt="">` : `<div class="avatar ${cls}">${esc((u.name || "?")[0])}</div>`;
+    const avatar = (u, cls = "") => /^https:\/\//.test(u.pic || "") ? `<img class="avatar ${cls}" loading="lazy" decoding="async" src="${esc(u.pic)}" alt="">` : `<div class="avatar ${cls}">${esc((u.name || "?")[0])}</div>`;
     const fmtDate = ts => new Date(ts).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "2-digit" });
 
     async function api(action, payload = {}, auth = false) {
@@ -459,10 +460,17 @@
       liff.login({ redirectUri: location.href });
     }
 
-    async function loadCheckins() {
-      try { checkins = (await api("list")).items || []; } catch (e) { checkins = []; showToast("โหลดข้อมูลเช็กอินไม่สำเร็จ: " + e.message); }
-      if (selected) renderWho(selected);
-      renderMe(); renderBoard();
+    function refreshViews() { if (selected) renderWho(selected); renderMe(); renderBoard(); }
+    async function loadCheckins(force = true) {
+      if (loading || (!force && Date.now() - lastFetch < 20000)) return;
+      loading = true; refreshViews();
+      try {
+        const j = await api("list");
+        checkins = j.r.map(([uid, parkId, ts]) => ({ uid, parkId, ts, name: j.u[uid][0], pic: j.u[uid][1] }));
+        lastFetch = Date.now();
+        try { localStorage.setItem("pk_checkins", JSON.stringify(checkins)); } catch (e) {}
+      } catch (e) { showToast("โหลดข้อมูลเช็กอินไม่สำเร็จ: " + e.message); }
+      loading = false; refreshViews();
     }
 
     const dayTH = d => new Date(d).toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" });
@@ -476,7 +484,7 @@
       const users = [...m.values()];
       $("who").innerHTML = users.length
         ? `<div style="width:100%">เช็กอินแล้ว ${users.length} คน</div>` + users.slice(0, 10).map(u => `<span class="chip">${avatar(u)}${esc(u.name)}</span>`).join("") + (users.length > 10 ? `<span class="chip">+${users.length - 10}</span>` : "")
-        : "ยังไม่มีใครเช็กอินที่นี่ — เป็นคนแรกเลย!";
+        : (loading ? "กำลังโหลดรายชื่อ…" : "ยังไม่มีใครเช็กอินที่นี่ — เป็นคนแรกเลย!");
     }
 
     $("checkinButton").addEventListener("click", async () => {
@@ -511,7 +519,7 @@
         <div class="card"><div class="profile">${avatar(me, "lg")}<div><b style="font-size:18px">${esc(me.name)}</b><br><small style="color:var(--muted)">นักสำรวจอุทยาน</small></div></div>
           <div class="facts"><div class="fact"><strong>${per.size}</strong><span>อุทยานที่เคยไป</span></div><div class="fact"><strong>${mine.length}</strong><span>เช็กอินทั้งหมด</span></div><div class="fact"><strong>${pct}%</strong><span>จาก ${parks.length} แห่ง</span></div></div>
           <div class="bar"><div style="width:${pct}%"></div></div></div>
-        <div class="card"><b>อุทยานที่ไปมาแล้ว</b>${list.length ? list.map(([id, o]) => `<div class="row"><span class="grow">${esc(parks[id]?.name)}</span><small>${o.n} ครั้ง · ${fmtDate(o.last)}</small></div>`).join("") : '<p style="color:var(--muted)">ยังไม่เคยเช็กอิน</p>'}</div>
+        <div class="card"><b>อุทยานที่ไปมาแล้ว</b>${list.length ? list.map(([id, o]) => `<div class="row"><span class="grow">${esc(parks[id]?.name)}</span><small>${o.n} ครั้ง · ${fmtDate(o.last)}</small></div>`).join("") : `<p style="color:var(--muted)">${loading ? "กำลังโหลด…" : "ยังไม่เคยเช็กอิน"}</p>`}</div>
         <button class="large-button" style="width:100%;margin-bottom:10px" id="copyBtn">คัดลอกรหัสเข้าสู่ระบบ (ใช้กับไอคอนแอป)</button><button class="large-button" style="width:100%" id="logoutBtn">ออกจากระบบ</button>`;
       $("copyBtn").onclick = async () => { try { await navigator.clipboard.writeText(me.token); showToast("คัดลอกแล้ว — อย่าส่งให้คนอื่น"); } catch (e) { showToast("คัดลอกไม่สำเร็จ"); } };
       $("logoutBtn").onclick = () => { clearSession(); try { if (window.liff && liff.isLoggedIn()) liff.logout(); } catch (e) {} location.reload(); };
@@ -525,7 +533,7 @@
       const medals = ["🥇", "🥈", "🥉"];
       $("pageBoard").innerHTML = `<h2>Leader</h2>
         <div class="filters"><button class="filter-chip ${boardMode === "total" ? "active" : ""}" data-m="total">เช็กอินมากสุด</button><button class="filter-chip ${boardMode === "parks" ? "active" : ""}" data-m="parks">ไปหลายอุทยานสุด</button></div>
-        <div class="card">${rank.length ? rank.map((u, i) => `<div class="row ${me && u.uid === me.id ? "me" : ""}"><span class="medal">${medals[i] || i + 1}</span>${avatar(u)}<span class="grow">${esc(u.name)}</span><small>${u.total} ครั้ง · ${u.set.size} แห่ง</small></div>`).join("") : '<p style="color:var(--muted)">ยังไม่มีข้อมูลเช็กอิน</p>'}</div>`;
+        <div class="card">${rank.length ? rank.map((u, i) => `<div class="row ${me && u.uid === me.id ? "me" : ""}"><span class="medal">${medals[i] || i + 1}</span>${avatar(u)}<span class="grow">${esc(u.name)}</span><small>${u.total} ครั้ง · ${u.set.size} แห่ง</small></div>`).join("") : `<p style="color:var(--muted)">${loading ? "กำลังโหลด…" : "ยังไม่มีข้อมูลเช็กอิน"}</p>`}</div>`;
       document.querySelectorAll("#pageBoard .filter-chip").forEach(b => b.onclick = () => { boardMode = b.dataset.m; renderBoard(); });
     }
 
@@ -536,11 +544,17 @@
       $("pageBoard").classList.toggle("show", t === "board");
       if (t !== "map") { detailCard.classList.remove("open"); selected = null; }
       else { render(); setTimeout(() => map.invalidateSize(), 50); }
-      if (t !== "map") loadCheckins();
+      if (t !== "map") loadCheckins(false);
     }));
 
     /* ===== เริ่มทำงาน: โหลดข้อมูล → หาตำแหน่ง → เด้งอุทยานใกล้สุด ===== */
-    loadData().then(() => { render(); locate(true); initLine().then(loadCheckins); });
+    loadData().then(() => {
+      render(); locate(true);
+      const li = initLine();           // กู้ล็อกอินที่จำไว้ทันที
+      renderMe(); renderBoard();       // แสดงข้อมูลแคชก่อน ไม่ต้องรอเครือข่าย
+      loadCheckins();                  // โหลดจริงพร้อมกับ LIFF ไม่รอกัน
+      li.then(() => { renderMe(); if (selected) renderWho(selected); });
+    });
   </script>
 </body>
 </html>
