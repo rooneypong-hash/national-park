@@ -460,7 +460,12 @@
       renderMe(); renderBoard();
     }
 
+    const dayTH = d => new Date(d).toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" });
     function renderWho(p) {
+      const done = !!me && checkins.some(c => c.uid === me.id && Number(c.parkId) === p.id && dayTH(c.ts) === dayTH(Date.now()));
+      const btn = $("checkinButton");
+      btn.disabled = done;
+      btn.lastChild.textContent = done ? "เช็กอินแล้ววันนี้ ✓" : "เช็กอินที่นี่";
       const m = new Map();
       checkins.filter(c => Number(c.parkId) === p.id).forEach(c => { if (!m.has(c.uid)) m.set(c.uid, c); });
       const users = [...m.values()];
@@ -476,13 +481,13 @@
         const d = haversine(userPos.lat, userPos.lng, selected.lat, selected.lng);
         if (d > CONFIG.CHECKIN_RADIUS_KM) return showToast(`ต้องอยู่ห่างอุทยานไม่เกิน ${CONFIG.CHECKIN_RADIUS_KM} กม. (ตอนนี้ ${fmtKm(d)})`);
       }
-      const btn = $("checkinButton"); btn.disabled = true;
+      $("checkinButton").disabled = true;
       try {
         await api("checkin", { parkId: selected.id, parkName: selected.name, lat: userPos?.lat, lng: userPos?.lng, plat: selected.lat, plng: selected.lng }, true);
         showToast("เช็กอินสำเร็จ 🌲");
         await loadCheckins();
       } catch (e) { showToast(e.message); }
-      btn.disabled = false;
+      renderWho(selected);
     });
 
     function renderMe() {
