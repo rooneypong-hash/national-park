@@ -308,7 +308,7 @@
 
     const CONFIG = {
       LIFF_ID: "2011831930-6IzeMDOS",
-      API_URL: "https://script.google.com/macros/s/AKfycbyHN13an-JZBU_ocXteQ2IsYL_x1Ed8Eb-npqugVnMTzAqW2AnWNP2ig9w24KGTPNUDOA/exec",
+      API_URL: "https://script.google.com/macros/s/AKfycby_XfXNTL7M71tnSuEeDxUxYPq8eZL0nyJv8PMwcOcngN-RXiUWYsR3K2BRL74qJycO7Q/exec",
       CHECKIN_RADIUS_KM: 0
     };
 
@@ -535,7 +535,8 @@
     } catch (e) {}
 
     function persistReviews() {
-      try {
+      try { localStorage.setItem(RV_KEY, JSON.stringify(reviewCache)); return; } catch (e) {}   // เก็บรูปเต็มก่อน
+      try {                                                                                      // เต็มโควตา → เก็บเฉพาะข้อความ
         const lite = {};
         Object.keys(reviewCache).forEach(k => lite[k] = reviewCache[k].map(r => ({ ...r, images: [] })));
         localStorage.setItem(RV_KEY, JSON.stringify(lite));
@@ -1018,6 +1019,7 @@
       initLine().then(() => { 
         renderMe(); 
         if (selected) renderWho(selected); 
+        if (selected) renderReviews(selected.id);  // วาดรีวิวใหม่ เมื่อรู้แล้วว่าใครล็อกอินอยู่ (สถานะหัวใจ/ปุ่มลบ)
       });
       
       renderBoard();
