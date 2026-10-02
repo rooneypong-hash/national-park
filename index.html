@@ -455,7 +455,7 @@
     }
 
     async function loadCheckins() {
-      try { checkins = (await api("list")).items || []; } catch (e) { checkins = []; }
+      try { checkins = (await api("list")).items || []; } catch (e) { checkins = []; showToast("โหลดข้อมูลเช็กอินไม่สำเร็จ: " + e.message); }
       if (selected) renderWho(selected);
       renderMe(); renderBoard();
     }
