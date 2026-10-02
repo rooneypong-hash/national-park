@@ -106,7 +106,7 @@
     .review-item { font-size: 13px; margin-bottom: 12px; background: #fdfdfd; padding: 14px; border-radius: 18px; border: 1px solid var(--border); box-shadow: 0 4px 12px rgba(0,0,0,0.03); }
     .review-item .stars { color: #fbbf24; }
 
-    /* สไตล์รูปภาพรีวิวแบบ IG เต็มตา */
+    /* รูปภาพรีวิวแบบเต็มตา */
     .ig-post-images { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
     .ig-single-img { width: 100%; max-height: 380px; object-fit: cover; border-radius: 14px; border: 1px solid var(--border); cursor: pointer; }
     .ig-multi-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
@@ -119,10 +119,12 @@
     .like-btn.liked { color: #ef4444; }
     .comment-section { margin-top: 8px; background: #f6f8f6; padding: 10px; border-radius: 14px; }
     .comment-list { max-height: 130px; overflow-y: auto; margin-bottom: 8px; display: flex; flex-direction: column; gap: 6px; }
-    .comment-item { font-size: 12px; background: #fff; padding: 6px 10px; border-radius: 10px; border: 1px solid var(--border); }
+    .comment-item { display: flex; justify-content: space-between; align-items: center; font-size: 12px; background: #fff; padding: 6px 10px; border-radius: 10px; border: 1px solid var(--border); }
     .comment-input-box { display: flex; gap: 6px; }
     .comment-input-box input { flex: 1; height: 36px; padding: 0 12px; border: 1px solid var(--border); border-radius: 10px; font-size: 12px; background: #fff; outline: none; }
     .comment-input-box button { height: 36px; padding: 0 14px; background: var(--primary); border: none; border-radius: 10px; font-weight: 700; font-size: 12px; cursor: pointer; color: var(--primary-dark); }
+    
+    .btn-del-text { background: none; border: none; color: #dc2626; font-size: 11px; cursor: pointer; padding: 2px 6px; font-weight: 700; }
 
     .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 3000; display: none; align-items: center; justify-content: center; padding: 16px; }
     .modal-overlay.show { display: flex; }
@@ -548,12 +550,14 @@
           const encodedImg = firstImg ? encodeURIComponent(firstImg) : "";
           const isLiked = me && r.likes && r.likes.includes(me.id);
           const likeCount = r.likes ? r.likes.length : 0;
+          const isMyReview = me && r.uid === me.id;
 
           let commentsHtml = "";
           if (r.comments && r.comments.length > 0) {
             commentsHtml = r.comments.map(c => `
               <div class="comment-item">
-                <b>${esc(c.name)}:</b> ${esc(c.comment)}
+                <span><b>${esc(c.name)}:</b> ${esc(c.comment)}</span>
+                ${me && (c.uid === me.id || isMyReview) ? `<button class="btn-del-text" onclick="deleteComment('${r.reviewId}', '${c.id}')">ลบ</button>` : ''}
               </div>
             `).join("");
           } else {
@@ -567,23 +571,26 @@
                   ${avatar({name: r.name, pic: r.pic})}
                   <b>${esc(r.name)}</b>
                 </div>
-                <span class="stars">${"★".repeat(r.rating)}${"☆".repeat(5 - r.rating)}</span>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <span class="stars">${"★".repeat(r.rating)}${"☆".repeat(5 - r.rating)}</span>
+                  ${isMyReview ? `<button class="btn-delete-sm" onclick="deleteReview('${r.reviewId}')">ลบรีวิว</button>` : ''}
+                </div>
               </div>
               <p style="margin:8px 0; color:var(--text); word-break:break-word; font-size:14px; line-height:1.4;">${esc(r.comment)}</p>
               ${imgHtml}
               <div class="review-footer">
-                <button class="like-btn ${isLiked ? 'liked' : ''}" onclick="toggleLike(${r.rowIndex})">
+                <button class="like-btn ${isLiked ? 'liked' : ''}" onclick="toggleLike('${r.reviewId}')">
                   ❤️ ${likeCount} ถูกใจ
                 </button>
                 <button onclick="shareReview('${esc(r.name)}', ${r.rating}, '${esc(r.comment)}', '${esc(selected.name)}', ${selected.id}, '${encodedImg}')" style="background:#3b82f6; color:#fff; border:none; padding:4px 10px; border-radius:6px; font-size:11px; cursor:pointer; font-weight:700;">🔗 แชร์</button>
               </div>
               <div class="comment-section">
-                <div class="comment-list" id="commList_${r.rowIndex}">
+                <div class="comment-list" id="commList_${r.reviewId}">
                   ${commentsHtml}
                 </div>
                 <div class="comment-input-box">
-                  <input type="text" id="commInput_${r.rowIndex}" placeholder="แสดงความคิดเห็น..." onkeydown="if(event.key==='Enter') addComment(${r.rowIndex})">
-                  <button onclick="addComment(${r.rowIndex})">ส่ง</button>
+                  <input type="text" id="commInput_${r.reviewId}" placeholder="แสดงความคิดเห็น..." onkeydown="if(event.key==='Enter') addComment('${r.reviewId}')">
+                  <button onclick="addComment('${r.reviewId}')">ส่ง</button>
                 </div>
               </div>
             </div>
@@ -594,22 +601,40 @@
       }
     }
 
-    async function toggleLike(rowIndex) {
+    async function toggleLike(reviewId) {
       if (!me) return showToast("กรุณาเข้าสู่ระบบก่อนกดถูกใจ");
       try {
-        await api("toggle_like", { rowIndex }, true);
+        await api("toggle_like", { reviewId }, true);
         if (selected) loadReviews(selected.id);
       } catch(e) { showToast(e.message); }
     }
 
-    async function addComment(rowIndex) {
+    async function addComment(reviewId) {
       if (!me) return showToast("กรุณาเข้าสู่ระบบก่อนแสดงความคิดเห็น");
-      const input = $(`commInput_${rowIndex}`);
+      const input = $(`commInput_${reviewId}`);
       const comment = input.value.trim();
       if (!comment) return;
       try {
-        await api("add_comment", { rowIndex, comment }, true);
+        await api("add_comment", { reviewId, comment }, true);
         input.value = "";
+        if (selected) loadReviews(selected.id);
+      } catch(e) { showToast(e.message); }
+    }
+
+    async function deleteReview(reviewId) {
+      if (!confirm("คุณต้องการลบรีวิวนี้ใช่หรือไม่?")) return;
+      try {
+        await api("delete_review", { reviewId }, true);
+        showToast("ลบรีวิวสำเร็จ");
+        if (selected) loadReviews(selected.id);
+      } catch(e) { showToast(e.message); }
+    }
+
+    async function deleteComment(reviewId, commentId) {
+      if (!confirm("คุณต้องการลบความคิดเห็นนี้ใช่หรือไม่?")) return;
+      try {
+        await api("delete_comment", { reviewId, commentId }, true);
+        showToast("ลบความคิดเห็นสำเร็จ");
         if (selected) loadReviews(selected.id);
       } catch(e) { showToast(e.message); }
     }
