@@ -507,23 +507,25 @@
         }
         listEl.innerHTML = j.reviews.map(r => {
           let imgHtml = "";
+          let firstImg = "";
           if (r.images && r.images.length > 0) {
-            imgHtml = `<div style="display:flex; gap:6px; margin-top:8px;">` + 
-              r.images.map(img => `<img src="${img}" style="width:50px; height:50px; object-fit:cover; border-radius:6px; border:1px solid var(--border);" />`).join("") +
+            firstImg = r.images[0];
+            imgHtml = `<div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;">` + 
+              r.images.map(img => `<img src="${img}" style="width:70px; height:70px; object-fit:cover; border-radius:8px; border:1px solid var(--border); cursor:pointer;" onclick="window.open('${img}')" />`).join("") +
               `</div>`;
           }
-          // แปลงรูปแรกเป็น string สำหรับส่งแชร์ (ถ้ามี)
-          const firstImg = (r.images && r.images.length > 0) ? r.images[0] : "";
+          // เข้ารหัสข้อมูลรูปภาพเพื่อส่งเข้าฟังก์ชันแชร์
+          const encodedImg = firstImg ? encodeURIComponent(firstImg) : "";
           return `
             <div class="review-item">
               <div style="display:flex; justify-content:space-between; align-items:center;">
                 <b>${esc(r.name)}</b>
                 <span class="stars">${"★".repeat(r.rating)}${"☆".repeat(5 - r.rating)}</span>
               </div>
-              <p style="margin:4px 0; color:var(--text); word-break:break-word;">${esc(r.comment)}</p>
+              <p style="margin:6px 0; color:var(--text); word-break:break-word;">${esc(r.comment)}</p>
               ${imgHtml}
-              <div style="display:flex; justify-content:flex-end; margin-top:6px;">
-                <button onclick="shareReview('${esc(r.name)}', ${r.rating}, '${esc(r.comment)}', '${esc(selected.name)}', ${selected.id})" style="background:#3b82f6; color:#fff; border:none; padding:4px 10px; border-radius:6px; font-size:11px; cursor:pointer; font-weight:700;">🔗 แชร์รีวิว</button>
+              <div style="display:flex; justify-content:flex-end; margin-top:8px;">
+                <button onclick="shareReview('${esc(r.name)}', ${r.rating}, '${esc(r.comment)}', '${esc(selected.name)}', ${selected.id}, '${encodedImg}')" style="background:#3b82f6; color:#fff; border:none; padding:5px 12px; border-radius:8px; font-size:12px; cursor:pointer; font-weight:700;">🔗 แชร์รีวิว</button>
               </div>
             </div>
           `;
@@ -533,15 +535,42 @@
       }
     }
 
-    function shareReview(name, rating, comment, parkName, parkId) {
+    // ฟังก์ชันแชร์รีวิว รองรับแนบไฟล์รูปภาพและไม่ให้ลิงก์ซ้ำ
+    async function shareReview(name, rating, comment, parkName, parkId, encodedImg) {
       const baseUrl = window.location.origin + window.location.pathname;
       const shareUrl = `${baseUrl}?park=${parkId}`;
-      const text = `⭐ รีวิวอุทยาน ${parkName} โดยคุณ ${name}\nคะแนน: ${"★".repeat(rating)}${"☆".repeat(5 - rating)}\n"${comment}"\n\nคลิกดูสถานที่:\n${shareUrl}`;
-      if (navigator.share) {
-        navigator.share({ title: `รีวิว ${parkName}`, text: text, url: shareUrl }).catch(() => {});
-      } else {
-        navigator.clipboard.writeText(text);
-        showToast("คัดลอกลิงก์รีวิวเรียบร้อยแล้ว!");
+      const text = `⭐ รีวิวอุทยาน ${parkName} โดยคุณ ${name}\nคะแนน: ${"★".repeat(rating)}${"☆".repeat(5 - rating)}\n"${comment}"`;
+
+      let shareData = {
+        title: `รีวิว ${parkName}`,
+        text: text,
+        url: shareUrl
+      };
+
+      try {
+        if (encodedImg && navigator.canShare) {
+          const imgUrl = decodeURIComponent(encodedImg);
+          const res = await fetch(imgUrl);
+          const blob = await res.blob();
+          const file = new File([blob], "review.jpg", { type: "image/jpeg" });
+          if (navigator.canShare({ files: [file] })) {
+            shareData.files = [file];
+          }
+        }
+
+        if (navigator.share) {
+          await navigator.share(shareData);
+        } else {
+          const fullText = `${text}\n\n${shareUrl}`;
+          await navigator.clipboard.writeText(fullText);
+          showToast("คัดลอกลิงก์รีวิวเรียบร้อยแล้ว!");
+        }
+      } catch (e) {
+        if (e.name !== 'AbortError') {
+          const fullText = `${text}\n\n${shareUrl}`;
+          await navigator.clipboard.writeText(fullText);
+          showToast("คัดลอกลิงก์รีวิวเรียบร้อยแล้ว!");
+        }
       }
     }
 
@@ -783,7 +812,6 @@
       renderBoard();
       loadCheckins();
 
-      // ตรวจสอบพารามิเตอร์ลิงก์ ?park= เพื่อเปิดไปยังสถานที่ที่แชร์มาทันที
       const urlParams = new URLSearchParams(window.location.search);
       const parkParam = urlParams.get('park');
       if (parkParam !== null && parks[Number(parkParam)]) {
