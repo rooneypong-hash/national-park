@@ -98,16 +98,17 @@
     .large-button i { width: 20px; }
 
     .review-section { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
-    .review-item { font-size: 13px; margin-bottom: 8px; background: #f9faf9; padding: 8px 12px; border-radius: 12px; }
+    .review-item { font-size: 13px; margin-bottom: 10px; background: #f9faf9; padding: 10px 12px; border-radius: 14px; border: 1px solid var(--border); }
     .review-item .stars { color: #fbbf24; }
 
+    /* Modal เขียนรีวิวพร้อมอัปโหลดรูป */
     .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 3000; display: none; align-items: center; justify-content: center; padding: 16px; }
     .modal-overlay.show { display: flex; }
-    .modal-box { background: #fff; width: 100%; max-width: 400px; padding: 20px; border-radius: 24px; box-shadow: var(--shadow); }
+    .modal-box { background: #fff; width: 100%; max-width: 400px; max-height: 90vh; overflow-y: auto; padding: 20px; border-radius: 24px; box-shadow: var(--shadow); }
     .modal-box h3 { margin: 0 0 12px; font-size: 18px; }
     .star-select { font-size: 32px; color: #d1d5db; text-align: center; cursor: pointer; margin-bottom: 12px; }
     .star-select span.active { color: #fbbf24; }
-    .modal-box textarea { width: 100%; height: 90px; padding: 10px; border: 1px solid var(--border); border-radius: 14px; resize: none; outline: none; margin-bottom: 12px; }
+    .modal-box textarea { width: 100%; height: 80px; padding: 10px; border: 1px solid var(--border); border-radius: 14px; resize: none; outline: none; margin-bottom: 12px; }
 
     .toast { position: absolute; bottom: calc(190px + env(safe-area-inset-bottom)); left: 50%; z-index: 1500; max-width: calc(100% - 34px); padding: 12px 17px; color: #fff; font-size: 13px; font-weight: 700; text-align: center; background: rgba(19,41,28,.93); border-radius: 14px; box-shadow: 0 10px 24px rgba(19,41,28,.24); transform: translate(-50%, 25px); opacity: 0; pointer-events: none; transition: .25s ease; }
     .toast.show { transform: translate(-50%, 0); opacity: 1; }
@@ -217,11 +218,11 @@
 
       <div class="review-section" id="reviewSection">
         <div style="font-weight:700; margin-bottom:6px; font-size:14px;">ความคิดเห็นและรีวิว</div>
-        <div id="reviewList" style="max-height:150px; overflow-y:auto;"></div>
+        <div id="reviewList" style="max-height:180px; overflow-y:auto;"></div>
       </div>
     </article>
 
-    <!-- Modal เขียนรีวิว -->
+    <!-- Modal เขียนรีวิว พร้อมอัปโหลดรูปภาพ -->
     <div class="modal-overlay" id="reviewModal">
       <div class="modal-box">
         <h3>รีวิวอุทยาน</h3>
@@ -232,7 +233,14 @@
           <span data-v="4" class="active">★</span>
           <span data-v="5" class="active">★</span>
         </div>
-        <textarea id="reviewComment" placeholder="เล่าความประทับใจ เช่น ธรรมชาติสวยงาม เจ้าหน้าที่บริการดี"></textarea>
+        <textarea id="reviewComment" placeholder="เล่าความประทับใจ เช่น ธรรมชาติสวยงาม ห้องน้ำสะอาด"></textarea>
+        
+        <div style="margin-bottom: 14px;">
+          <label style="font-size: 13px; font-weight: 700; color: var(--muted); display: block; margin-bottom: 6px;">แนบรูปภาพประกอบ (สูงสุด 3 รูป)</label>
+          <input type="file" id="reviewFileinput" accept="image/*" multiple style="width: 100%; font-size: 12px; padding: 6px; background: #f3f6f3; border-radius: 8px; border: 1px solid var(--border);" />
+          <div id="imagePreviewContainer" style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;"></div>
+        </div>
+
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
           <button class="large-button" id="cancelReview">ยกเลิก</button>
           <button class="large-button primary" id="submitReview">บันทึกรีวิว</button>
@@ -394,12 +402,20 @@
     $("closeCard").addEventListener("click", closeCard);
     $("locateButton").addEventListener("click", () => locate(false));
 
+    /* ===== จัดการรีวิวและอัปโหลดรูปภาพ ===== */
     let currentRating = 5;
+    let reviewImagesBase64 = [];
+
     $("reviewBtn").addEventListener("click", () => {
       if (!me) return showToast("กรุณาเข้าสู่ระบบก่อนรีวิว");
       $("reviewModal").classList.add("show");
     });
-    $("cancelReview").addEventListener("click", () => $("reviewModal").classList.remove("show"));
+    $("cancelReview").addEventListener("click", () => {
+      $("reviewModal").classList.remove("show");
+      reviewImagesBase64 = [];
+      $("imagePreviewContainer").innerHTML = "";
+      $("reviewFileinput").value = "";
+    });
     
     document.querySelectorAll("#starSelect span").forEach(star => {
       star.addEventListener("click", (e) => {
@@ -410,13 +426,62 @@
       });
     });
 
+    // บีบอัดและแปลงรูปภาพเป็น Base64 (สูงสุด 3 รูป)
+    $("reviewFileinput").addEventListener("change", async (e) => {
+      const files = Array.from(e.target.files).slice(0, 3);
+      reviewImagesBase64 = [];
+      const container = $("imagePreviewContainer");
+      container.innerHTML = "";
+
+      for (let file of files) {
+        const base64 = await compressImage(file, 600, 0.7);
+        reviewImagesBase64.push(base64);
+        const img = document.createElement("img");
+        img.src = base64;
+        img.style.width = "55px";
+        img.style.height = "55px";
+        img.style.objectFit = "cover";
+        img.style.borderRadius = "8px";
+        img.style.border = "1px solid var(--border)";
+        container.appendChild(img);
+      }
+    });
+
+    function compressImage(file, maxWidth, quality) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (event) => {
+          const img = new Image();
+          img.src = event.target.result;
+          img.onload = () => {
+            const canvas = document.createElement("canvas");
+            let width = img.width;
+            let height = img.height;
+            if (width > maxWidth) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            }
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL("image/jpeg", quality));
+          };
+        };
+      });
+    }
+
     $("submitReview").addEventListener("click", async () => {
       const comment = $("reviewComment").value.trim();
       if (!comment) return showToast("กรุณาใส่ข้อความรีวิว");
       try {
-        await api("add_review", { parkId: selected.id, rating: currentRating, comment }, true);
+        await api("add_review", { parkId: selected.id, rating: currentRating, comment, images: reviewImagesBase64 }, true);
         showToast("บันทึกรีวิวสำเร็จ ⭐");
         $("reviewComment").value = "";
+        reviewImagesBase64 = [];
+        $("imagePreviewContainer").innerHTML = "";
+        $("reviewFileinput").value = "";
         $("reviewModal").classList.remove("show");
         loadReviews(selected.id);
       } catch (e) { showToast(e.message); }
@@ -431,17 +496,40 @@
           listEl.innerHTML = "<small style='color:var(--muted)'>ยังไม่มีรีวิว มาเป็นคนแรกกัน!</small>";
           return;
         }
-        listEl.innerHTML = j.reviews.map(r => `
-          <div class="review-item">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-              <b>${esc(r.name)}</b>
-              <span class="stars">${"★".repeat(r.rating)}${"☆".repeat(5 - r.rating)}</span>
+        listEl.innerHTML = j.reviews.map(r => {
+          let imgHtml = "";
+          if (r.images && r.images.length > 0) {
+            imgHtml = `<div style="display:flex; gap:6px; margin-top:8px;">` + 
+              r.images.map(img => `<img src="${img}" style="width:50px; height:50px; object-fit:cover; border-radius:6px; border:1px solid var(--border);" />`).join("") +
+              `</div>`;
+          }
+          return `
+            <div class="review-item">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <b>${esc(r.name)}</b>
+                <span class="stars">${"★".repeat(r.rating)}${"☆".repeat(5 - r.rating)}</span>
+              </div>
+              <p style="margin:4px 0; color:var(--text); word-break:break-word;">${esc(r.comment)}</p>
+              ${imgHtml}
+              <div style="display:flex; justify-content:flex-end; margin-top:6px;">
+                <button onclick="shareReview('${esc(r.name)}', ${r.rating}, '${esc(r.comment)}', '${esc(selected.name)}')" style="background:#3b82f6; color:#fff; border:none; padding:4px 10px; border-radius:6px; font-size:11px; cursor:pointer; font-weight:700;">🔗 แชร์รีวิว</button>
+              </div>
             </div>
-            <p style="margin:4px 0 0; color:var(--text);">${esc(r.comment)}</p>
-          </div>
-        `).join("");
+          `;
+        }).join("");
       } catch (e) {
         listEl.innerHTML = "<small style='color:var(--muted)'>โหลดรีวิวไม่สำเร็จ</small>";
+      }
+    }
+
+    // ฟังก์ชันแชร์รีวิว
+    function shareReview(name, rating, comment, parkName) {
+      const text = `⭐ รีวิวอุทยาน ${parkName} โดยคุณ ${name}\nคะแนน: ${"★".repeat(rating)}${"☆".repeat(5 - rating)}\n"${comment}"\n\nผ่านระบบ "อุทยานใกล้ฉัน"`;
+      if (navigator.share) {
+        navigator.share({ title: `รีวิว ${parkName}`, text: text }).catch(() => {});
+      } else {
+        navigator.clipboard.writeText(text);
+        showToast("คัดลอกข้อความรีวิวสำหรับแชร์แล้ว!");
       }
     }
 
