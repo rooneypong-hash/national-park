@@ -4,6 +4,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>อุทยานใกล้ฉัน</title>
+  <meta name="theme-color" content="#73dc4b" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="อุทยานใกล้ฉัน" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
 
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -94,6 +99,13 @@
     .toast { position: absolute; bottom: calc(120px + env(safe-area-inset-bottom)); left: 50%; z-index: 1500; max-width: calc(100% - 34px); padding: 12px 17px; color: #fff; font-size: 13px; font-weight: 700; text-align: center; background: rgba(19,41,28,.93); border-radius: 14px; box-shadow: 0 10px 24px rgba(19,41,28,.24); transform: translate(-50%, 25px); opacity: 0; pointer-events: none; transition: .25s ease; }
     .toast.show { transform: translate(-50%, 0); opacity: 1; }
 
+    .sheet-backdrop { position: absolute; inset: 0; z-index: 2000; display: none; align-items: flex-end; background: rgba(19,41,28,.45); }
+    .sheet-backdrop.show { display: flex; }
+    .sheet { width: 100%; padding: 22px 20px calc(20px + env(safe-area-inset-bottom)); background: #fff; border-radius: 28px 28px 0 0; }
+    .sheet h3 { margin: 0 0 12px; font-size: 18px; font-weight: 800; }
+    .sheet ol { margin: 0 0 16px; padding-left: 22px; font-size: 15px; line-height: 1.9; }
+    .sheet .large-button { width: 100%; }
+
     @media (max-height: 760px) { .detail-card { padding: 14px; } .facts { margin-top: 10px; } }
     @media (min-width: 700px) { body { padding: 18px 0; } .app { height: calc(100dvh - 36px); border-radius: 30px; } }
   </style>
@@ -128,10 +140,9 @@
     <div id="map"></div>
 
     <div class="map-actions">
-      <button class="circle-button" id="importButton" aria-label="นำเข้าไฟล์ KML"><i data-lucide="file-up"></i></button>
+      <button class="circle-button" id="installButton" aria-label="บันทึกไอคอนไว้หน้าจอมือถือ"><i data-lucide="download"></i></button>
       <button class="circle-button" id="locateButton" aria-label="ตำแหน่งของฉัน"><i data-lucide="locate-fixed"></i></button>
     </div>
-    <input type="file" id="kmlFile" accept=".kml,.kmz,.xml" hidden />
 
     <div class="strip" id="strip"></div>
 
@@ -159,11 +170,18 @@
       </div>
     </article>
 
+    <div class="sheet-backdrop" id="sheet">
+      <div class="sheet">
+        <h3>บันทึกไอคอนไว้หน้าจอมือถือ</h3>
+        <ol id="sheetSteps"></ol>
+        <button class="large-button primary" id="sheetClose">เข้าใจแล้ว</button>
+      </div>
+    </div>
+
     <div class="toast" id="toast"></div>
   </main>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script>
     lucide.createIcons();
 
@@ -186,49 +204,6 @@
       toast.textContent = msg;
       toast.classList.add("show");
       toastTimer = setTimeout(() => toast.classList.remove("show"), 3200);
-    }
-
-    /* ===== KML ===== */
-    function parseKML(text) {
-      const xml = new DOMParser().parseFromString(text, "text/xml");
-      const out = [];
-      for (const pm of xml.getElementsByTagName("Placemark")) {
-        const coordsEl = pm.getElementsByTagName("coordinates")[0];
-        if (!coordsEl) continue;
-        const pts = coordsEl.textContent.trim().split(/\s+/).map(s => s.split(",").map(Number)).filter(p => p.length >= 2 && !isNaN(p[0]) && !isNaN(p[1]));
-        if (!pts.length) continue;
-        const lng = pts.reduce((a, p) => a + p[0], 0) / pts.length;
-        const lat = pts.reduce((a, p) => a + p[1], 0) / pts.length;
-        const name = (pm.getElementsByTagName("name")[0]?.textContent || "").trim();
-        const tmp = document.createElement("div");
-        tmp.innerHTML = pm.getElementsByTagName("description")[0]?.textContent || "";
-        const desc = tmp.textContent.replace(/\s+/g, " ").trim();
-        if (name) out.push({ name, lat, lng, desc });
-      }
-      return out;
-    }
-
-    /* อ่านข้อมูลจาก KML / KMZ / NetworkLink (ลิงก์ My Maps) */
-    async function readAny(buf, name = "") {
-      const bytes = new Uint8Array(buf);
-      let text;
-      if (bytes[0] === 0x50 && bytes[1] === 0x4b) {            // KMZ (zip)
-        const zip = await JSZip.loadAsync(buf);
-        const f = Object.keys(zip.files).find(n => /\.kml$/i.test(n));
-        if (!f) throw new Error("no kml in kmz");
-        text = await zip.files[f].async("string");
-      } else text = new TextDecoder("utf-8").decode(bytes);
-
-      let list = parseKML(text);
-      if (!list.length) {                                       // ไฟล์แบบ NetworkLink
-        const m = text.match(/<href>\s*(?:<!\[CDATA\[)?\s*(https?:[^<\]\s]+)/i);
-        if (m) {
-          const r = await fetch(m[1]);
-          if (!r.ok) throw new Error("netlink " + r.status);
-          return readAny(await r.arrayBuffer(), name);
-        }
-      }
-      return list;
     }
 
     async function loadData() {
@@ -336,22 +311,61 @@
     searchInput.addEventListener("input", closeCard);
     $("closeCard").addEventListener("click", closeCard);
     $("locateButton").addEventListener("click", () => locate(false));
-    $("importButton").addEventListener("click", () => $("kmlFile").click());
-    $("kmlFile").addEventListener("change", async e => {
-      const f = e.target.files[0];
-      if (!f) return;
+    /* ===== บันทึกไอคอนไว้หน้าจอมือถือ ===== */
+    const isStandalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    let deferredPrompt = null;
+
+    (function setupPWA() {
       try {
-        const data = await readAny(await f.arrayBuffer(), f.name);
-        if (!data.length) return showToast("ไฟล์นี้ไม่มีตำแหน่ง — ต้องส่งออกแบบ KML/KMZ ที่มีข้อมูลจริง");
-        parks = data;
-        showToast(`นำเข้า ${parks.length} อุทยานแล้ว`);
-        closeCard();
-        if (userPos) selectPark(parks[0], true);
-      } catch (err) {
-        showToast("อ่านไฟล์ไม่ได้ — ลองดาวน์โหลด KMZ จาก My Maps โดยตรง");
+        const c = document.createElement("canvas");
+        c.width = c.height = 512;
+        const x = c.getContext("2d");
+        x.fillStyle = "#73dc4b"; x.fillRect(0, 0, 512, 512);
+        x.font = "300px serif"; x.textAlign = "center"; x.textBaseline = "middle";
+        x.fillText("🌲", 256, 276);
+        const icon = c.toDataURL("image/png");
+
+        const link = document.createElement("link");
+        link.rel = "apple-touch-icon"; link.href = icon;
+        document.head.appendChild(link);
+
+        const manifest = {
+          name: "อุทยานใกล้ฉัน", short_name: "อุทยานใกล้ฉัน",
+          start_url: location.origin + location.pathname, scope: location.origin + "/",
+          display: "standalone", background_color: "#eef2ee", theme_color: "#73dc4b",
+          icons: [{ src: icon, sizes: "512x512", type: "image/png", purpose: "any" }]
+        };
+        const ml = document.createElement("link");
+        ml.rel = "manifest";
+        ml.href = URL.createObjectURL(new Blob([JSON.stringify(manifest)], { type: "application/manifest+json" }));
+        document.head.appendChild(ml);
+      } catch (e) {}
+    })();
+
+    window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); deferredPrompt = e; });
+    window.addEventListener("appinstalled", () => { $("installButton").style.display = "none"; showToast("บันทึกไอคอนแล้ว"); });
+    if (isStandalone) $("installButton").style.display = "none";
+
+    function showSheet(steps) {
+      $("sheetSteps").innerHTML = steps.map(t => `<li>${t}</li>`).join("");
+      $("sheet").classList.add("show");
+    }
+    $("sheetClose").addEventListener("click", () => $("sheet").classList.remove("show"));
+    $("sheet").addEventListener("click", e => { if (e.target.id === "sheet") $("sheet").classList.remove("show"); });
+
+    $("installButton").addEventListener("click", async () => {
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        await deferredPrompt.userChoice.catch(() => {});
+        deferredPrompt = null;
+      } else if (isIOS) {
+        showSheet(["เปิดหน้านี้ด้วย <b>Safari</b>", "แตะปุ่ม <b>แชร์</b> (สี่เหลี่ยมมีลูกศรขึ้น) ด้านล่าง", "เลื่อนลงแล้วเลือก <b>เพิ่มไปยังหน้าจอโฮม</b>", "แตะ <b>เพิ่ม</b>"]);
+      } else {
+        showSheet(["เปิดหน้านี้ด้วย <b>Chrome</b>", "แตะเมนู <b>⋮</b> มุมขวาบน", "เลือก <b>เพิ่มไปยังหน้าจอหลัก</b> (หรือ <b>ติดตั้งแอป</b>)", "แตะ <b>เพิ่ม</b>"]);
       }
-      e.target.value = "";
     });
+
     $("navigateButton").addEventListener("click", () => {
       if (selected) window.open(`https://www.google.com/maps/dir/?api=1&destination=${selected.lat},${selected.lng}`, "_blank");
     });
