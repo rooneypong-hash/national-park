@@ -33,7 +33,13 @@
 
     .header { position: absolute; inset: 0 0 auto 0; z-index: 1000; display: flex; align-items: center; justify-content: center; height: calc(72px + env(safe-area-inset-top)); padding-top: env(safe-area-inset-top); background: rgba(255,255,255,.96); border-bottom: 1px solid rgba(221,228,222,.8); backdrop-filter: blur(16px); }
     .header h1 { margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -.5px; }
-    .header-logo { position: absolute; left: 18px; display: grid; width: 40px; height: 40px; place-items: center; color: #fff; background: var(--primary); border-radius: 14px; box-shadow: 0 8px 18px rgba(115,220,75,.35); }
+    
+    /* แอนิเมชันโลโก้เคลื่อนไหว */
+    @keyframes pulseLogo {
+      0%, 100% { transform: scale(1) rotate(0deg); }
+      50% { transform: scale(1.12) rotate(6deg); }
+    }
+    .header-logo { position: absolute; left: 18px; display: grid; width: 40px; height: 40px; place-items: center; color: #fff; background: var(--primary); border-radius: 14px; box-shadow: 0 8px 18px rgba(115,220,75,.35); animation: pulseLogo 2.5s infinite ease-in-out; }
     .header-logo i { width: 22px; }
 
     #map { position: absolute; inset: 0; z-index: 1; background: #e7ece7; }
@@ -514,7 +520,6 @@
               r.images.map(img => `<img src="${img}" style="width:70px; height:70px; object-fit:cover; border-radius:8px; border:1px solid var(--border); cursor:pointer;" onclick="window.open('${img}')" />`).join("") +
               `</div>`;
           }
-          // เข้ารหัสข้อมูลรูปภาพเพื่อส่งเข้าฟังก์ชันแชร์
           const encodedImg = firstImg ? encodeURIComponent(firstImg) : "";
           return `
             <div class="review-item">
@@ -535,7 +540,6 @@
       }
     }
 
-    // ฟังก์ชันแชร์รีวิว รองรับแนบไฟล์รูปภาพและไม่ให้ลิงก์ซ้ำ
     async function shareReview(name, rating, comment, parkName, parkId, encodedImg) {
       const baseUrl = window.location.origin + window.location.pathname;
       const shareUrl = `${baseUrl}?park=${parkId}`;
