@@ -260,7 +260,7 @@
         <textarea id="reviewComment" placeholder="เล่าความประทับใจ เช่น ธรรมชาติสวยงาม ห้องน้ำสะอาด"></textarea>
         
         <div style="margin-bottom: 14px;">
-          <label style="font-size: 13px; font-weight: 700; color: var(--muted); display: block; margin-bottom: 6px;">แนบรูปภาพประกอบ (สูงสุด 3 รูป)</label>
+          <label style="font-size: 13px; font-weight: 700; color: var(--muted); display: block; margin-bottom: 6px;">แนบรูปภาพประกอบ (สูงสุด 6 รูป)</label>
           <input type="file" id="reviewFileinput" accept="image/*" multiple style="width: 100%; font-size: 12px; padding: 6px; background: #f3f6f3; border-radius: 8px; border: 1px solid var(--border);" />
           <div id="imagePreviewContainer" style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;"></div>
         </div>
@@ -469,7 +469,7 @@
     });
 
     $("reviewFileinput").addEventListener("change", async (e) => {
-      const files = Array.from(e.target.files).slice(0, 3);
+      const files = Array.from(e.target.files).slice(0, 6);
       reviewImagesBase64 = [];
       const container = $("imagePreviewContainer");
       container.innerHTML = "";
