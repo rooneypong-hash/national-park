@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>อุทยานใกล้ฉัน</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    :root {
+      --primary: #73dc4b;
+      --primary-dark: #173c23;
+      --primary-soft: #e0f8d6;
+      --text: #13291c;
+      --muted: #77847c;
+      --border: #dde4de;
+      --background: #eef2ee;
+      --shadow: 0 16px 45px rgba(18, 51, 30, 0.18);
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { width: 100%; min-height: 100%; margin: 0; font-family: "Noto Sans Thai", sans-serif; color: var(--text); background: #dfe5e0; }
+    button, input { font: inherit; color: inherit; }
+
+    .app { position: relative; width: 100%; max-width: 520px; height: 100dvh; min-height: 650px; margin: 0 auto; overflow: hidden; background: var(--background); box-shadow: 0 0 45px rgba(19, 41, 28, 0.16); }
+
+    .header { position: absolute; inset: 0 0 auto 0; z-index: 1000; display: flex; align-items: center; justify-content: center; height: calc(72px + env(safe-area-inset-top)); padding-top: env(safe-area-inset-top); background: rgba(255,255,255,.96); border-bottom: 1px solid rgba(221,228,222,.8); backdrop-filter: blur(16px); }
+    .header h1 { margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -.5px; }
+    .header-logo { position: absolute; left: 18px; display: grid; width: 40px; height: 40px; place-items: center; color: #fff; background: var(--primary); border-radius: 14px; box-shadow: 0 8px 18px rgba(115,220,75,.35); }
+    .header-logo i { width: 22px; }
+
+    #map { position: absolute; inset: 0; z-index: 1; background: #e7ece7; }
+    .leaflet-control-zoom { display: none; }
+    .leaflet-control-attribution { margin-bottom: 4px !important; padding: 3px 7px !important; font-size: 9px !important; border-radius: 8px 0 0; }
+
+    .search-panel { position: absolute; top: calc(82px + env(safe-area-inset-top)); right: 14px; left: 14px; z-index: 900; }
+    .search-box { display: flex; align-items: center; height: 54px; padding: 0 16px; background: rgba(255,255,255,.97); border: 1px solid rgba(221,228,222,.9); border-radius: 22px; box-shadow: 0 10px 28px rgba(27,57,37,.14); }
+    .search-box i { flex: 0 0 auto; width: 22px; color: #8a978f; }
+    .search-box input { width: 100%; margin-left: 12px; background: transparent; border: 0; outline: 0; font-size: 16px; }
+    .filters { display: flex; gap: 8px; margin-top: 10px; padding: 0 1px 6px; overflow-x: auto; scrollbar-width: none; }
+    .filters::-webkit-scrollbar { display: none; }
+    .filter-chip { flex: 0 0 auto; height: 40px; padding: 0 17px; font-size: 14px; font-weight: 700; white-space: nowrap; background: rgba(255,255,255,.96); border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 6px 15px rgba(27,57,37,.09); cursor: pointer; }
+    .filter-chip.active { color: #1a5424; background: var(--primary-soft); border-color: #bcefac; }
+
+    .result-pill { position: absolute; top: calc(192px + env(safe-area-inset-top)); left: 50%; z-index: 800; display: flex; align-items: center; gap: 8px; padding: 9px 16px; color: #536158; font-size: 14px; background: rgba(255,255,255,.94); border: 1px solid rgba(221,228,222,.9); border-radius: 999px; box-shadow: 0 7px 20px rgba(27,57,37,.12); transform: translateX(-50%); white-space: nowrap; }
+    .result-pill strong { color: var(--primary-dark); }
+    .result-pill i { width: 16px; height: 16px; }
+
+    .park-marker { display: grid; width: 40px; height: 40px; place-items: center; font-size: 20px; background: #148846; border: 3px solid #fff; border-radius: 50% 50% 50% 6px; box-shadow: 0 6px 14px rgba(35,49,38,.28); transform: rotate(-45deg); transition: transform .2s ease; }
+    .park-marker span { transform: rotate(45deg); line-height: 1; }
+    .park-marker.selected { background: #ff8a1f; transform: rotate(-45deg) scale(1.2); }
+    .user-marker { width: 20px; height: 20px; background: #2688ff; border: 4px solid #fff; border-radius: 50%; box-shadow: 0 0 0 8px rgba(38,136,255,.19), 0 3px 12px rgba(0,0,0,.25); }
+
+    .map-actions { position: absolute; right: 16px; bottom: calc(170px + env(safe-area-inset-bottom)); z-index: 850; display: flex; flex-direction: column; gap: 12px; }
+    .circle-button { display: grid; width: 52px; height: 52px; padding: 0; place-items: center; background: #fff; border: 1px solid var(--border); border-radius: 50%; box-shadow: 0 8px 20px rgba(27,57,37,.16); cursor: pointer; }
+    .circle-button i { width: 23px; }
+
+    /* รายการอุทยานใกล้ที่สุด */
+    .strip { position: absolute; right: 0; bottom: 0; left: 0; z-index: 900; display: flex; gap: 10px; padding: 10px 14px calc(14px + env(safe-area-inset-bottom)); overflow-x: auto; scrollbar-width: none; scroll-snap-type: x proximity; }
+    .strip::-webkit-scrollbar { display: none; }
+    .strip.hidden { display: none; }
+    .strip-item { flex: 0 0 72%; max-width: 280px; padding: 12px 14px; text-align: left; background: rgba(255,255,255,.97); border: 1px solid rgba(222,230,223,.95); border-radius: 20px; box-shadow: 0 8px 22px rgba(27,57,37,.16); cursor: pointer; scroll-snap-align: start; }
+    .strip-item b { display: block; overflow: hidden; font-size: 15px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+    .strip-item small { color: var(--muted); font-size: 12px; font-weight: 600; }
+    .strip-item .rank { display: inline-block; margin-right: 6px; padding: 1px 8px; color: #1a5424; font-size: 11px; font-weight: 800; background: var(--primary-soft); border-radius: 999px; }
+
+    .detail-card { position: absolute; right: 12px; bottom: calc(14px + env(safe-area-inset-bottom)); left: 12px; z-index: 1100; padding: 18px; background: rgba(255,255,255,.98); border: 1px solid rgba(222,230,223,.95); border-radius: 28px; box-shadow: var(--shadow); transform: translateY(calc(100% + 40px)); opacity: 0; pointer-events: none; transition: transform .32s cubic-bezier(.22,1,.36,1), opacity .25s ease; }
+    .detail-card.open { transform: translateY(0); opacity: 1; pointer-events: auto; }
+    .card-handle { width: 48px; height: 5px; margin: -6px auto 13px; background: #d6ddd7; border-radius: 99px; }
+    .card-top { display: flex; align-items: flex-start; gap: 13px; }
+    .place-icon { display: grid; flex: 0 0 auto; width: 56px; height: 56px; place-items: center; color: #174426; background: var(--primary); border-radius: 18px; }
+    .place-icon i { width: 29px; height: 29px; }
+    .place-heading { min-width: 0; flex: 1; }
+    .place-heading h2 { margin: 1px 0 3px; font-size: 19px; font-weight: 800; line-height: 1.35; }
+    .place-heading p:empty { display: none; }
+    .place-heading p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .close-button { display: grid; flex: 0 0 auto; width: 38px; height: 38px; padding: 0; place-items: center; color: #5f6d64; background: #f6f8f6; border: 1px solid var(--border); border-radius: 50%; cursor: pointer; }
+    .close-button i { width: 19px; }
+    .nearest-tag { display: inline-flex; align-items: center; gap: 5px; margin-bottom: 8px; padding: 4px 11px; color: #16753a; font-size: 12px; font-weight: 800; background: #e2f7dc; border-radius: 999px; }
+    .nearest-tag i { width: 14px; height: 14px; }
+    .nearest-tag.hidden { display: none; }
+    .facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
+    .fact { min-width: 0; padding: 10px 6px; text-align: center; background: #f3f6f3; border-radius: 16px; }
+    .fact i { width: 19px; height: 19px; color: #2b7a3c; }
+    .fact strong { display: block; margin-top: 4px; font-size: 13px; line-height: 1.3; }
+    .fact span { display: block; margin-top: 2px; overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+    .primary-actions { display: grid; grid-template-columns: 1.4fr 1fr; gap: 10px; margin-top: 14px; }
+    .large-button { display: flex; align-items: center; justify-content: center; gap: 8px; height: 50px; font-size: 15px; font-weight: 800; background: #fff; border: 1px solid #d6ded7; border-radius: 18px; cursor: pointer; }
+    .large-button.primary { color: #153c21; background: var(--primary); border-color: var(--primary); box-shadow: 0 9px 20px rgba(115,220,75,.25); }
+    .large-button i { width: 20px; }
+
+    .toast { position: absolute; bottom: calc(120px + env(safe-area-inset-bottom)); left: 50%; z-index: 1500; max-width: calc(100% - 34px); padding: 12px 17px; color: #fff; font-size: 13px; font-weight: 700; text-align: center; background: rgba(19,41,28,.93); border-radius: 14px; box-shadow: 0 10px 24px rgba(19,41,28,.24); transform: translate(-50%, 25px); opacity: 0; pointer-events: none; transition: .25s ease; }
+    .toast.show { transform: translate(-50%, 0); opacity: 1; }
+
+    @media (max-height: 760px) { .detail-card { padding: 14px; } .facts { margin-top: 10px; } }
+    @media (min-width: 700px) { body { padding: 18px 0; } .app { height: calc(100dvh - 36px); border-radius: 30px; } }
+  </style>
+</head>
+
+<body>
+  <main class="app">
+    <header class="header">
+      <div class="header-logo"><i data-lucide="trees"></i></div>
+      <h1>อุทยานใกล้ฉัน</h1>
+    </header>
+
+    <section class="search-panel">
+      <label class="search-box">
+        <i data-lucide="search"></i>
+        <input id="searchInput" type="search" placeholder="ค้นหาอุทยานแห่งชาติ" />
+      </label>
+      <div class="filters">
+        <button class="filter-chip active" data-km="0">ทั้งหมด</button>
+        <button class="filter-chip" data-km="50">ใน 50 กม.</button>
+        <button class="filter-chip" data-km="100">ใน 100 กม.</button>
+        <button class="filter-chip" data-km="200">ใน 200 กม.</button>
+        <button class="filter-chip" data-km="500">ใน 500 กม.</button>
+      </div>
+    </section>
+
+    <div class="result-pill">
+      <i data-lucide="map-pin"></i>
+      พบอุทยาน <strong id="resultCount">0</strong> แห่ง
+    </div>
+
+    <div id="map"></div>
+
+    <div class="map-actions">
+      <button class="circle-button" id="importButton" aria-label="นำเข้าไฟล์ KML"><i data-lucide="file-up"></i></button>
+      <button class="circle-button" id="locateButton" aria-label="ตำแหน่งของฉัน"><i data-lucide="locate-fixed"></i></button>
+    </div>
+    <input type="file" id="kmlFile" accept=".kml,.kmz,.xml" hidden />
+
+    <div class="strip" id="strip"></div>
+
+    <article class="detail-card" id="detailCard">
+      <div class="card-handle"></div>
+      <div class="card-top">
+        <div class="place-icon"><i data-lucide="trees"></i></div>
+        <div class="place-heading">
+          <span class="nearest-tag" id="nearestTag"><i data-lucide="sparkles"></i>อุทยานที่ใกล้คุณที่สุด</span>
+          <h2 id="placeName">-</h2>
+          <p id="placeDesc"></p>
+        </div>
+        <button class="close-button" id="closeCard" aria-label="ปิด"><i data-lucide="x"></i></button>
+      </div>
+
+      <div class="facts">
+        <div class="fact"><i data-lucide="route"></i><strong id="placeDistance">-</strong><span>ระยะทางจากคุณ</span></div>
+        <div class="fact"><i data-lucide="car"></i><strong id="placeDrive">-</strong><span>ขับรถโดยประมาณ</span></div>
+        <div class="fact"><i data-lucide="map-pin"></i><strong id="placeCoord">-</strong><span>พิกัด</span></div>
+      </div>
+
+      <div class="primary-actions">
+        <button class="large-button primary" id="navigateButton"><i data-lucide="navigation"></i>นำทาง</button>
+        <button class="large-button" id="shareButton"><i data-lucide="share-2"></i>แชร์</button>
+      </div>
+    </article>
+
+    <div class="toast" id="toast"></div>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script>
+    lucide.createIcons();
+
+    /* ===== ข้อมูลอุทยาน 159 แห่ง จาก Google My Maps "ที่ทำการอุทยานแห่งชาติ - By Adisak P." ===== */
+    const EMBEDDED = [{"name":"อุทยานแห่งชาติเขานัน","lat":8.771209,"lng":99.804483,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติเขาหลวง","lat":8.368695,"lng":99.735585,"desc":""},{"name":"อุทยานแห่งชาติน้ำตกสี่ขีด","lat":9.014254,"lng":99.771783,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติหมู่เกาะชุมพร","lat":10.356986,"lng":99.231686,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติอ่าวพังงา","lat":8.404958,"lng":98.50846,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติแก่งกรุง","lat":9.307948,"lng":98.866061,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติเขาสก","lat":8.915772,"lng":98.527797,"desc":""},{"name":"อุทยานแห่งชาติคลองพนม","lat":8.879994,"lng":98.674082,"desc":""},{"name":"อุทยานแห่งชาติใต้ร่มเย็น","lat":8.863223,"lng":99.478789,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติกุยบุรี","lat":12.051777,"lng":99.623869,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติเขาสามร้อยยอด","lat":12.128416,"lng":99.95429,"desc":""},{"name":"อุทยานแห่งชาติน้ำตกห้วยยาง","lat":11.625503,"lng":99.614021,"desc":""},{"name":"อุทยานแห่งชาติหาดวนกร","lat":11.636081,"lng":99.702502,"desc":""},{"name":"อุทยานแห่งชาติอ่าวสยาม","lat":11.210309,"lng":99.523141,"desc":""},{"name":"อุทยานแห่งชาติน้ำตกหงาว","lat":9.856331,"lng":98.62769,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติลำน้ำกระบุรี","lat":10.084419,"lng":98.662647,"desc":""},{"name":"อุทยานแห่งชาติหมู่เกาะระนอง","lat":9.875025,"lng":98.587542,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติแหลมสน","lat":9.603229,"lng":98.469168,"desc":""},{"name":"อุทยานแห่งชาติธารเสด็จ - เกาะพะงัน","lat":9.735701,"lng":100.013204,"desc":""},{"name":"อุทยานแห่งชาติเขาพนมเบญจา","lat":8.240164,"lng":98.914147,"desc":""},{"name":"อุทยานแห่งชาติธารโบกขรณี","lat":8.389879,"lng":98.733229,"desc":""},{"name":"อุทยานแห่งชาติหมู่เกาะลันตา","lat":7.470411,"lng":99.09921,"desc":""},{"name":"อุทยานแห่งชาติหาดนพรัตน์ธารา-หมู่เกาะพีพี","lat":8.047085,"lng":98.799178,"desc":""},{"name":"อุทยานแห่งชาติหาดเจ้าไหม","lat":7.412069,"lng":99.34535,"desc":""},{"name":"อุทยานแห่งชาติน้ำตกโยง","lat":8.172284,"lng":99.741822,"desc":""},{"name":"อุทยานแห่งชาติหาดขนอม-หมู่เกาะทะเลใต้","lat":9.107808,"lng":99.903021,"desc":""},{"name":"อุทยานแห่งชาติหมู่เกาะเภตรา","lat":6.835302,"lng":99.755161,"desc":""},{"name":"อุทยานแห่งชาติทะเลบัน","lat":6.710379,"lng":100.170902,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติเขาน้ำค้าง","lat":6.599286,"lng":100.588049,"desc":""},{"name":"อุทยานแห่งชาติสันกาลาคีรี","lat":6.326626,"lng":100.923118,"desc":""},{"name":"อุทยานแห่งชาติเขาปู่-เขาย่า","lat":7.680722,"lng":99.871928,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติศรีพังงา","lat":8.997767,"lng":98.45828,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติเขาลำปี-หาดท้ายเหมือง","lat":8.438691,"lng":98.235354,"desc":""},{"name":"อุทยานแห่งชาติ เขาหลัก-ลำรู่","lat":8.626358,"lng":98.239814,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติเขาพนมเบญจา","lat":8.240164,"lng":98.914147,"desc":""},{"name":"อุทยานแห่งชาติหมู่เกาะลันตา","lat":7.470411,"lng":99.09921,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติหาดนพรัตน์ธารา-หมู่เกาะพีพี","lat":8.047073,"lng":98.799175,"desc":""},{"name":"อุทยานแห่งชาติสิรินาถ","lat":8.090306,"lng":98.298537,"desc":""},{"name":"อุทยานแห่งชาติบางลาง","lat":6.199378,"lng":101.172253,"desc":""},{"name":"อุทยานแห่งชาติน้ำตกทรายขาว","lat":6.658346,"lng":101.095201,"desc":""},{"name":"อุทยานแห่งชาติน้ำตกซีโป","lat":6.269734,"lng":101.63381,"desc":""},{"name":"อุทยานแห่งชาติอ่าวมะนาว-เขาตันหยง","lat":6.427002,"lng":101.854601,"desc":""},{"name":"อุทยานแห่งชาติบูโด-สุไหงปาดี","lat":6.500566,"lng":101.63638,"desc":""},{"name":"อุทยานแห่งชาติเขาคิชฌกูฏ","lat":12.839093,"lng":102.120875,"desc":""},{"name":"อุทยานแห่งชาติเขาสิบห้าชั้น","lat":13.175813,"lng":102.002151,"desc":""},{"name":"อุทยานแห่งชาติน้ำตกพลิ้ว","lat":12.529581,"lng":102.18422,"desc":""},{"name":"อุทยานแห่งชาติน้ำตกคลองแก้ว","lat":12.617821,"lng":102.577141,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติหมู่เกาะช้าง","lat":12.124744,"lng":102.269255,"desc":""},{"name":"อุทยานแห่งชาติทับลาน","lat":14.217911,"lng":101.90151,"desc":""},{"name":"สำนักงานอุทยานแห่งชาติเขาชะเมา-เขาวง","lat":12.913128,"lng":101.723174,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติ เขาแหลมหญ้า","lat":12.591412,"lng":101.418205,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติ ตาพระยา","lat":14.131234,"lng":102.669498,"desc":""},{"name":"อุทยานแห่งชาติปางสีดา","lat":13.983081,"lng":102.204674,"desc":""},{"name":"อุทยานแห่งชาติน้ำตกเจ็ดสาวน้อย","lat":14.725773,"lng":101.188993,"desc":""},{"name":"อุทยานแห่งชาติน้ำตกสามหลั่น","lat":14.440744,"lng":100.959626,"desc":""},{"name":"อุทยานแห่งชาติพุเตย","lat":14.946597,"lng":99.415781,"desc":""},{"name":"อุทยานแห่งชาติ เขาแหลม","lat":15.024357,"lng":98.597775,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติเขื่อนศรีนครินทร์","lat":14.639272,"lng":98.985626,"desc":""},{"name":"อุทยานแห่งชาติเฉลิมรัตนโกสินทร์","lat":14.661963,"lng":99.312291,"desc":""},{"name":"อุทยานแห่งชาติทองผาภูมิ","lat":14.693313,"lng":98.404544,"desc":""},{"name":"อุทยานแห่งชาติไทรโยค","lat":14.437605,"lng":98.850588,"desc":""},{"name":"อุทยานแห่งชาติลำคลองงู","lat":14.907838,"lng":98.736506,"desc":""},{"name":"อุทยานแห่งชาติเอราวัณ","lat":14.375496,"lng":99.143962,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติแก่งกระจาน","lat":12.884951,"lng":99.633164,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติคลองลาน","lat":16.129622,"lng":99.281412,"desc":""},{"name":"อุทยานแห่งชาติคลองวังเจ้า","lat":16.506038,"lng":99.170404,"desc":""},{"name":"ศูนย์บริการนักท่องเที่ยวอุทยานแห่งชาติแม่วงก์","lat":16.039062,"lng":99.233425,"desc":""},{"name":"อุทยานแห่งชาติขุนแจ","lat":19.076788,"lng":99.399369,"desc":""},{"name":"อุทยานแห่งชาติดอยหลวง","lat":19.443892,"lng":99.703084,"desc":""},{"name":"อุทยานแห่งชาติถ้ำหลวง-ขุนน้ำนางนอน","lat":20.381277,"lng":99.867434,"desc":""},{"name":"อุทยานแห่งชาติภูชี้ฟ้า","lat":19.850012,"lng":100.446012,"desc":""},{"name":"อุทยานแห่งชาติลำน้ำกก","lat":19.963091,"lng":99.67968,"desc":""},{"name":"อุทยานแห่งชาติขุนขาน","lat":18.853405,"lng":98.62177,"desc":""},{"name":"ที่ทำการ อุทยานแห่งชาติดอยผ้าห่มปก","lat":19.966032,"lng":99.154892,"desc":""},{"name":"อุทยานแห่งชาติ ดอยเวียงผา","lat":19.678399,"lng":99.197228,"desc":""},{"name":"อุทยานแห่งชาติดอยสุเทพ-ปุย","lat":18.807005,"lng":98.916091,"desc":""},{"name":"ดอยอินทนนท์","lat":18.588043,"lng":98.487061,"desc":""},{"name":"อุทยานแห่งชาติน้ำตกบัวตอง-น้ำพุเจ็ดสี","lat":19.069199,"lng":99.079491,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติผาแดง","lat":19.629131,"lng":98.956383,"desc":""},{"name":"อุทยานแห่งชาติแม่ตะไคร้","lat":18.966333,"lng":99.242083,"desc":""},{"name":"อุทยานแห่งชาติแม่โถ","lat":18.251564,"lng":98.209201,"desc":""},{"name":"อุทยานแห่งชาติแม่วาง","lat":18.526572,"lng":98.75426,"desc":""},{"name":"อุทยานแห่งชาติศรีลานนา","lat":19.17671,"lng":99.031908,"desc":""},{"name":"อุทยานแห่งชาติห้วยน้ำดัง","lat":19.303936,"lng":98.598869,"desc":""},{"name":"Ob Khan National Park","lat":18.723072,"lng":98.821566,"desc":""},{"name":"อุทยานแห่งชาติ ออบหลวง","lat":18.222541,"lng":98.481886,"desc":""},{"name":"อุทยานแห่งชาติขุนพะวอ","lat":17.038475,"lng":98.627762,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติดอยสอยมาลัย","lat":17.067943,"lng":99.085139,"desc":""},{"name":"อุทยานแห่งชาติตากสินมหาราช","lat":16.778628,"lng":98.928564,"desc":""},{"name":"อุทยานแห่งชาติน้ำตกพาเจริญ","lat":16.502057,"lng":98.752739,"desc":""},{"name":"อุทยานแห่งชาติแม่เมย","lat":17.481744,"lng":98.074618,"desc":""},{"name":"อุทยานแห่งชาติลานสาง","lat":16.782454,"lng":99.015681,"desc":""},{"name":"อุทยานแห่งชาติขุนน่าน","lat":19.182952,"lng":101.178087,"desc":""},{"name":"อุทยานแห่งชาติขุนสถาน","lat":18.277102,"lng":100.521349,"desc":""},{"name":"อุทยานแห่งชาติดอยภูคา","lat":19.198587,"lng":101.080321,"desc":""},{"name":"อุทยานแห่งชาติถ้ำสะเกิน","lat":19.381668,"lng":100.538465,"desc":""},{"name":"อุทยานแห่งชาตินันทบุรี","lat":19.129111,"lng":100.642412,"desc":""},{"name":"อุทยานแห่งชาติแม่จริม","lat":18.601533,"lng":100.980225,"desc":""},{"name":"อุทยานแห่งชาติศรีน่าน","lat":18.367578,"lng":100.839165,"desc":""},{"name":"อุทยานแห่งชาติดอยภูนาง","lat":18.855897,"lng":100.181416,"desc":""},{"name":"อุทยานแห่งชาติภูซาง","lat":19.663591,"lng":100.375896,"desc":""},{"name":"อุทยานแห่งชาติแม่ปืม","lat":19.353541,"lng":99.867304,"desc":""},{"name":"อุทยานแห่งชาติแควน้อย","lat":17.176064,"lng":100.397764,"desc":""},{"name":"อุทยานแห่งชาติทุ่งแสลงหลวง","lat":16.579067,"lng":100.882514,"desc":""},{"name":"Chat Trakan Waterfall National Park","lat":17.297811,"lng":100.683313,"desc":""},{"name":"อุทยานแห่งชาติภูหินร่องกล้า","lat":17.003913,"lng":100.994248,"desc":""},{"name":"อุทยานแห่งชาติเขาค้อ","lat":16.571785,"lng":100.97809,"desc":""},{"name":"อุทยานแห่งชาติ ตาดหมอก","lat":16.385706,"lng":101.268141,"desc":""},{"name":"อุทยานแห่งชาติน้ำหนาว","lat":16.739954,"lng":101.573719,"desc":""},{"name":"อุทยานแห่งชาติดอยผากลอง","lat":18.153496,"lng":99.987262,"desc":""},{"name":"อุทยานแห่งชาติแม่ยม","lat":18.611795,"lng":100.160296,"desc":""},{"name":"อุทยานแห่งชาติ เวียงโกศัย","lat":17.967782,"lng":99.593947,"desc":""},{"name":"อุทยานแห่งชาติถ้ำปลา-น้ำตกผาเสื่อ","lat":19.425603,"lng":97.987131,"desc":""},{"name":"อุทยานแห่งชาติน้ำตกแม่สุรินทร์","lat":18.942547,"lng":98.071213,"desc":""},{"name":"อุทยานแห่งชาติแม่เงา","lat":17.846198,"lng":97.976718,"desc":""},{"name":"อุทยานแห่งชาติแม่สะเรียง","lat":18.235548,"lng":97.945008,"desc":""},{"name":"อุทยานแห่งชาติสาละวิน","lat":18.165092,"lng":97.884302,"desc":""},{"name":"อุทยานแห่งชาติเขลางค์บรรพต","lat":18.255317,"lng":99.561778,"desc":""},{"name":"อุทยานแห่งชาติแจ้ซ้อน","lat":18.836605,"lng":99.47068,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติดอยจง","lat":17.917569,"lng":99.249762,"desc":""},{"name":"อุทยานแห่งชาติถ้ำผาไท","lat":18.605222,"lng":99.897757,"desc":""},{"name":"อุทยานแห่งชาติแม่วะ","lat":17.448258,"lng":99.225781,"desc":""},{"name":"อุทยานแห่งชาติ ดอยขุนตาล","lat":18.495692,"lng":99.271088,"desc":""},{"name":"อุทยานแห่งชาติแม่ปิง","lat":17.595967,"lng":98.805554,"desc":""},{"name":"อุทยานแห่งชาติรามคำแหง","lat":16.877428,"lng":99.693072,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติศรีสัชนาลัย","lat":17.55365,"lng":99.485187,"desc":""},{"name":"อุทยานแห่งชาติต้นสักใหญ่","lat":17.657361,"lng":100.569052,"desc":""},{"name":"อุทยานแห่งชาติภูสอยดาว","lat":17.698467,"lng":100.946306,"desc":""},{"name":"อุทยานแห่งชาติลำน้ำน่าน","lat":17.766972,"lng":100.486699,"desc":""},{"name":"อุทยานแห่งชาติน้ำพอง","lat":16.624376,"lng":102.570077,"desc":""},{"name":"อุทยานแห่งชาติภูเก้า- ภูพานคํา","lat":16.811546,"lng":102.611406,"desc":""},{"name":"อุทยานแห่งชาติภูผาม่าน","lat":16.756514,"lng":101.968485,"desc":""},{"name":"อุทยานแห่งชาติภูเวียง","lat":16.681093,"lng":102.237112,"desc":""},{"name":"อุทยานแห่งชาติตาดโตน","lat":15.980718,"lng":102.034494,"desc":""},{"name":"อุทยานแห่งชาติไทรทอง","lat":15.874626,"lng":101.510144,"desc":""},{"name":"อุทยานแห่งชาติป่าหินงาม","lat":15.631622,"lng":101.393892,"desc":""},{"name":"อุทยานแห่งชาติภูแลนคา","lat":15.99942,"lng":101.895607,"desc":""},{"name":"อุทยานแห่งชาติภูลังกา","lat":17.984748,"lng":104.140192,"desc":""},{"name":"อุทยานแห่งชาติเขาใหญ่","lat":14.439463,"lng":101.372436,"desc":""},{"name":"อุทยานแห่งชาติภูผาเทิบ","lat":16.434603,"lng":104.805529,"desc":""},{"name":"อุทยานแห่งชาติภูสระดอกบัว","lat":16.233205,"lng":104.780526,"desc":""},{"name":"อุทยานแห่งชาติภูกระดึง","lat":16.871305,"lng":101.845773,"desc":""},{"name":"อุทยานแห่งชาติภูเรือ","lat":17.51419,"lng":101.344913,"desc":""},{"name":"อุทยานแห่งชาติภูสวนทราย","lat":17.504848,"lng":100.940648,"desc":""},{"name":"อุทยานแห่งชาติเขาพระวิหาร","lat":14.416453,"lng":104.690405,"desc":""},{"name":"อุทยานแห่งชาติภูผายล","lat":16.92948,"lng":104.139397,"desc":""},{"name":"อุทยานแห่งชาติภูผาเหล็ก","lat":17.267502,"lng":103.457996,"desc":""},{"name":"อุทยานแห่งชาติภูพาน","lat":17.062341,"lng":103.9731,"desc":""},{"name":"อุทยานแห่งชาตินายูง-น้ำโสม","lat":17.924679,"lng":102.251,"desc":""},{"name":"อุทยานแห่งชาติแก่งตะนะ","lat":15.299547,"lng":105.476831,"desc":""},{"name":"อุทยานแห่งชาติผาแต้ม","lat":15.399114,"lng":105.508264,"desc":""},{"name":"อุทยานแห่งชาติภูจองนายอย","lat":14.434323,"lng":105.252158,"desc":""},{"name":"อุทยานแห่งชาติภูหินจอมธาตุ-ภูพระบาท","lat":17.347391,"lng":102.474197,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติตะรุเตา","lat":6.861011,"lng":99.722066,"desc":""},{"name":"อุทยานแห่งชาติเฉลิมพระเกียรติไทยประจัน จ.ราชบุรี","lat":13.266807,"lng":99.553924,"desc":""},{"name":"อุทยานแห่งชาติหมู่เกาะอ่างทอง","lat":9.635235,"lng":99.671822,"desc":""},{"name":"อุทยานแห่งชาติหมู่เกาะสุรินทร์","lat":9.434384,"lng":97.868119,"desc":""},{"name":"อุทยานแห่งชาติเจ็ดคด-โป่งก้อนเส้า","lat":14.493874,"lng":101.161605,"desc":""},{"name":"อุทยานแห่งชาติหมู่เกาะสิมิลัน","lat":8.657395,"lng":97.648888,"desc":""}];
+
+    /* ===== สถานะ ===== */
+    const map = L.map("map", { zoomControl: false }).setView([13.0, 101.0], 6);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap contributors" }).addTo(map);
+
+    const $ = id => document.getElementById(id);
+    const detailCard = $("detailCard"), strip = $("strip"), searchInput = $("searchInput"), toast = $("toast");
+    const markerLayer = L.layerGroup().addTo(map);
+    const markers = new Map();
+
+    let parks = [], userPos = null, userMarker = null, selected = null, maxKm = 0, toastTimer, firstAutoSelect = true;
+
+    function showToast(msg) {
+      clearTimeout(toastTimer);
+      toast.textContent = msg;
+      toast.classList.add("show");
+      toastTimer = setTimeout(() => toast.classList.remove("show"), 3200);
+    }
+
+    /* ===== KML ===== */
+    function parseKML(text) {
+      const xml = new DOMParser().parseFromString(text, "text/xml");
+      const out = [];
+      for (const pm of xml.getElementsByTagName("Placemark")) {
+        const coordsEl = pm.getElementsByTagName("coordinates")[0];
+        if (!coordsEl) continue;
+        const pts = coordsEl.textContent.trim().split(/\s+/).map(s => s.split(",").map(Number)).filter(p => p.length >= 2 && !isNaN(p[0]) && !isNaN(p[1]));
+        if (!pts.length) continue;
+        const lng = pts.reduce((a, p) => a + p[0], 0) / pts.length;
+        const lat = pts.reduce((a, p) => a + p[1], 0) / pts.length;
+        const name = (pm.getElementsByTagName("name")[0]?.textContent || "").trim();
+        const tmp = document.createElement("div");
+        tmp.innerHTML = pm.getElementsByTagName("description")[0]?.textContent || "";
+        const desc = tmp.textContent.replace(/\s+/g, " ").trim();
+        if (name) out.push({ name, lat, lng, desc });
+      }
+      return out;
+    }
+
+    /* อ่านข้อมูลจาก KML / KMZ / NetworkLink (ลิงก์ My Maps) */
+    async function readAny(buf, name = "") {
+      const bytes = new Uint8Array(buf);
+      let text;
+      if (bytes[0] === 0x50 && bytes[1] === 0x4b) {            // KMZ (zip)
+        const zip = await JSZip.loadAsync(buf);
+        const f = Object.keys(zip.files).find(n => /\.kml$/i.test(n));
+        if (!f) throw new Error("no kml in kmz");
+        text = await zip.files[f].async("string");
+      } else text = new TextDecoder("utf-8").decode(bytes);
+
+      let list = parseKML(text);
+      if (!list.length) {                                       // ไฟล์แบบ NetworkLink
+        const m = text.match(/<href>\s*(?:<!\[CDATA\[)?\s*(https?:[^<\]\s]+)/i);
+        if (m) {
+          const r = await fetch(m[1]);
+          if (!r.ok) throw new Error("netlink " + r.status);
+          return readAny(await r.arrayBuffer(), name);
+        }
+      }
+      return list;
+    }
+
+    async function loadData() {
+      parks = EMBEDDED.map(p => ({ ...p }));
+    }
+
+    /* ===== คำนวณระยะ ===== */
+    function haversine(lat1, lng1, lat2, lng2) {
+      const R = 6371, rad = Math.PI / 180;
+      const dLat = (lat2 - lat1) * rad, dLng = (lng2 - lng1) * rad;
+      const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(dLng / 2) ** 2;
+      return 2 * R * Math.asin(Math.sqrt(a));
+    }
+    const fmtKm = km => km < 1 ? `${Math.round(km * 1000)} ม.` : `${km.toFixed(km < 10 ? 1 : 0)} กม.`;
+    function fmtDrive(km) {
+      const min = Math.round(km * 1.4 / 60 * 60);
+      return min < 60 ? `${min} นาที` : `${Math.floor(min / 60)} ชม. ${min % 60} นาที`;
+    }
+
+    /* ===== แสดงผล ===== */
+    function markerIcon(sel) {
+      return L.divIcon({ className: "", html: `<div class="park-marker${sel ? " selected" : ""}"><span>🌲</span></div>`, iconSize: [40, 40], iconAnchor: [20, 38] });
+    }
+
+    function visibleParks() {
+      const kw = searchInput.value.trim().toLowerCase();
+      return parks.filter(p =>
+        (!kw || p.name.toLowerCase().includes(kw) || p.desc.toLowerCase().includes(kw)) &&
+        (!maxKm || !userPos || p.dist <= maxKm)
+      );
+    }
+
+    function render() {
+      if (userPos) parks.forEach(p => p.dist = haversine(userPos.lat, userPos.lng, p.lat, p.lng));
+      parks.sort((a, b) => userPos ? a.dist - b.dist : a.name.localeCompare(b.name, "th"));
+      const list = visibleParks();
+      $("resultCount").textContent = list.length;
+
+      markerLayer.clearLayers();
+      markers.clear();
+      list.forEach(p => {
+        const m = L.marker([p.lat, p.lng], { icon: markerIcon(selected === p) }).on("click", () => selectPark(p));
+        m.addTo(markerLayer);
+        markers.set(p, m);
+      });
+
+      strip.innerHTML = "";
+      list.slice(0, 12).forEach((p, i) => {
+        const b = document.createElement("button");
+        b.className = "strip-item";
+        b.innerHTML = `<b>${i === 0 && userPos ? '<span class="rank">ใกล้สุด</span>' : ""}${p.name}</b><small>${userPos ? fmtKm(p.dist) + " · ขับประมาณ " + fmtDrive(p.dist) : "แตะเพื่อดูรายละเอียด"}</small>`;
+        b.onclick = () => selectPark(p);
+        strip.appendChild(b);
+      });
+      strip.classList.toggle("hidden", detailCard.classList.contains("open"));
+    }
+
+    function selectPark(p, fit = false) {
+      selected = p;
+      markers.forEach((m, park) => m.setIcon(markerIcon(park === p)));
+      $("placeName").textContent = p.name;
+      $("placeDesc").textContent = p.desc;
+      $("placeDistance").textContent = userPos ? fmtKm(p.dist) : "-";
+      $("placeDrive").textContent = userPos ? fmtDrive(p.dist) : "-";
+      $("placeCoord").textContent = `${p.lat.toFixed(3)}, ${p.lng.toFixed(3)}`;
+      $("nearestTag").classList.toggle("hidden", !(userPos && parks[0] === p));
+      detailCard.classList.add("open");
+      strip.classList.add("hidden");
+      lucide.createIcons();
+
+      if (fit && userPos) map.fitBounds([[userPos.lat, userPos.lng], [p.lat, p.lng]], { padding: [70, 70], maxZoom: 14, paddingBottomRight: [70, 300] });
+      else map.panTo([p.lat, p.lng], { animate: true });
+    }
+
+    function closeCard() {
+      selected = null;
+      detailCard.classList.remove("open");
+      render();
+    }
+
+    /* ===== ตำแหน่งผู้ใช้ ===== */
+    function locate(auto = false) {
+      if (!navigator.geolocation) { showToast("อุปกรณ์นี้ไม่รองรับการระบุตำแหน่ง"); render(); return; }
+      if (!auto) showToast("กำลังค้นหาตำแหน่งของคุณ");
+      navigator.geolocation.getCurrentPosition(pos => {
+        userPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        if (userMarker) map.removeLayer(userMarker);
+        userMarker = L.marker([userPos.lat, userPos.lng], { icon: L.divIcon({ className: "", html: '<div class="user-marker"></div>', iconSize: [20, 20], iconAnchor: [10, 10] }), zIndexOffset: 1000 }).addTo(map);
+        render();
+        if (parks.length) selectPark(parks[0], true);   // เด้งอุทยานใกล้ที่สุดทันที
+      }, () => {
+        showToast("กรุณาอนุญาตการเข้าถึงตำแหน่ง เพื่อแสดงอุทยานใกล้คุณ");
+        render();
+      }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+    }
+
+    /* ===== Events ===== */
+    document.querySelectorAll(".filter-chip").forEach(btn => btn.addEventListener("click", () => {
+      document.querySelectorAll(".filter-chip").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      maxKm = Number(btn.dataset.km);
+      if (maxKm && !userPos) showToast("เปิดตำแหน่งก่อนเพื่อกรองตามระยะทาง");
+      closeCard();
+    }));
+    searchInput.addEventListener("input", closeCard);
+    $("closeCard").addEventListener("click", closeCard);
+    $("locateButton").addEventListener("click", () => locate(false));
+    $("importButton").addEventListener("click", () => $("kmlFile").click());
+    $("kmlFile").addEventListener("change", async e => {
+      const f = e.target.files[0];
+      if (!f) return;
+      try {
+        const data = await readAny(await f.arrayBuffer(), f.name);
+        if (!data.length) return showToast("ไฟล์นี้ไม่มีตำแหน่ง — ต้องส่งออกแบบ KML/KMZ ที่มีข้อมูลจริง");
+        parks = data;
+        showToast(`นำเข้า ${parks.length} อุทยานแล้ว`);
+        closeCard();
+        if (userPos) selectPark(parks[0], true);
+      } catch (err) {
+        showToast("อ่านไฟล์ไม่ได้ — ลองดาวน์โหลด KMZ จาก My Maps โดยตรง");
+      }
+      e.target.value = "";
+    });
+    $("navigateButton").addEventListener("click", () => {
+      if (selected) window.open(`https://www.google.com/maps/dir/?api=1&destination=${selected.lat},${selected.lng}`, "_blank");
+    });
+    $("shareButton").addEventListener("click", async () => {
+      if (!selected) return;
+      const data = { title: selected.name, text: `อุทยาน ${selected.name}`, url: `https://www.google.com/maps?q=${selected.lat},${selected.lng}` };
+      try {
+        if (navigator.share) await navigator.share(data);
+        else { await navigator.clipboard.writeText(data.url); showToast("คัดลอกลิงก์แล้ว"); }
+      } catch (e) {}
+    });
+
+    /* ===== เริ่มทำงาน: โหลดข้อมูล → หาตำแหน่ง → เด้งอุทยานใกล้สุด ===== */
+    loadData().then(() => { render(); locate(true); });
+  </script>
+</body>
+</html>
