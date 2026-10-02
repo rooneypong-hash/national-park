@@ -390,23 +390,13 @@
         if (userMarker) map.removeLayer(userMarker);
         userMarker = L.marker([userPos.lat, userPos.lng], { icon: L.divIcon({ className: "", html: '<div class="user-marker"></div>', iconSize: [20, 20], iconAnchor: [10, 10] }), zIndexOffset: 1000 }).addTo(map);
         render();
-        
-        const urlParams = new URLSearchParams(window.location.search);
-        const parkParam = urlParams.get('park');
-        if (parkParam !== null && parks[Number(parkParam)]) {
-          selectPark(parks[Number(parkParam)], true);
-        } else if (parks.length && firstAutoSelect) {
+        if (parks.length && firstAutoSelect && !new URLSearchParams(window.location.search).has('park')) {
           firstAutoSelect = false;
           selectPark(parks[0], true);
         }
       }, () => {
         showToast("กรุณาอนุญาตการเข้าถึงตำแหน่ง");
         render();
-        const urlParams = new URLSearchParams(window.location.search);
-        const parkParam = urlParams.get('park');
-        if (parkParam !== null && parks[Number(parkParam)]) {
-          selectPark(parks[Number(parkParam)], true);
-        }
       }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
     }
 
@@ -522,6 +512,8 @@
               r.images.map(img => `<img src="${img}" style="width:50px; height:50px; object-fit:cover; border-radius:6px; border:1px solid var(--border);" />`).join("") +
               `</div>`;
           }
+          // แปลงรูปแรกเป็น string สำหรับส่งแชร์ (ถ้ามี)
+          const firstImg = (r.images && r.images.length > 0) ? r.images[0] : "";
           return `
             <div class="review-item">
               <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -549,7 +541,7 @@
         navigator.share({ title: `รีวิว ${parkName}`, text: text, url: shareUrl }).catch(() => {});
       } else {
         navigator.clipboard.writeText(text);
-        showToast("คัดลอกลิงก์รีวิวและข้อความแล้ว!");
+        showToast("คัดลอกลิงก์รีวิวเรียบร้อยแล้ว!");
       }
     }
 
@@ -791,10 +783,13 @@
       renderBoard();
       loadCheckins();
 
+      // ตรวจสอบพารามิเตอร์ลิงก์ ?park= เพื่อเปิดไปยังสถานที่ที่แชร์มาทันที
       const urlParams = new URLSearchParams(window.location.search);
       const parkParam = urlParams.get('park');
       if (parkParam !== null && parks[Number(parkParam)]) {
-        setTimeout(() => selectPark(parks[Number(parkParam)], true), 300);
+        setTimeout(() => {
+          selectPark(parks[Number(parkParam)], true);
+        }, 400);
       }
     });
   </script>
