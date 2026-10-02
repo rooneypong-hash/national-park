@@ -27,7 +27,7 @@
     }
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100%; min-height: 100%; margin: 0; font-family: "Noto Sans Thai", sans-serif; color: var(--text); background: #dfe5e0; }
-    button, input { font: inherit; color: inherit; }
+    button, input, textarea { font: inherit; color: inherit; }
 
     .app { position: relative; width: 100%; max-width: 520px; height: 100dvh; min-height: 650px; margin: 0 auto; overflow: hidden; background: var(--background); box-shadow: 0 0 45px rgba(19, 41, 28, 0.16); }
 
@@ -62,7 +62,6 @@
     .circle-button { display: grid; width: 52px; height: 52px; padding: 0; place-items: center; background: #fff; border: 1px solid var(--border); border-radius: 50%; box-shadow: 0 8px 20px rgba(27,57,37,.16); cursor: pointer; }
     .circle-button i { width: 23px; }
 
-    /* รายการอุทยานใกล้ที่สุด */
     .strip { position: absolute; right: 0; bottom: calc(64px + env(safe-area-inset-bottom)); left: 0; z-index: 900; display: flex; gap: 10px; padding: 10px 14px; overflow-x: auto; scrollbar-width: none; scroll-snap-type: x proximity; }
     .strip::-webkit-scrollbar { display: none; }
     .strip.hidden { display: none; }
@@ -91,10 +90,26 @@
     .fact i { width: 19px; height: 19px; color: #2b7a3c; }
     .fact strong { display: block; margin-top: 4px; font-size: 13px; line-height: 1.3; }
     .fact span { display: block; margin-top: 2px; overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-    .primary-actions { display: grid; grid-template-columns: 1.4fr 1fr; gap: 10px; margin-top: 14px; }
+    
+    .park-actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 12px; }
+    .primary-actions { display: grid; grid-template-columns: 1.4fr 1fr; gap: 10px; margin-top: 10px; }
     .large-button { display: flex; align-items: center; justify-content: center; gap: 8px; height: 50px; font-size: 15px; font-weight: 800; background: #fff; border: 1px solid #d6ded7; border-radius: 18px; cursor: pointer; }
     .large-button.primary { color: #153c21; background: var(--primary); border-color: var(--primary); box-shadow: 0 9px 20px rgba(115,220,75,.25); }
     .large-button i { width: 20px; }
+
+    /* รีวิวส่วนแสดงผลใน Card */
+    .review-section { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+    .review-item { font-size: 13px; margin-bottom: 8px; background: #f9faf9; padding: 8px 12px; border-radius: 12px; }
+    .review-item .stars { color: #fbbf24; }
+
+    /* Modal เขียนรีวิว */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 3000; display: none; align-items: center; justify-content: center; padding: 16px; }
+    .modal-overlay.show { display: flex; }
+    .modal-box { background: #fff; width: 100%; max-width: 400px; padding: 20px; border-radius: 24px; box-shadow: var(--shadow); }
+    .modal-box h3 { margin: 0 0 12px; font-size: 18px; }
+    .star-select { font-size: 32px; color: #d1d5db; text-align: center; cursor: pointer; margin-bottom: 12px; }
+    .star-select span.active { color: #fbbf24; }
+    .modal-box textarea { width: 100%; height: 90px; padding: 10px; border: 1px solid var(--border); border-radius: 14px; resize: none; outline: none; margin-bottom: 12px; }
 
     .toast { position: absolute; bottom: calc(190px + env(safe-area-inset-bottom)); left: 50%; z-index: 1500; max-width: calc(100% - 34px); padding: 12px 17px; color: #fff; font-size: 13px; font-weight: 700; text-align: center; background: rgba(19,41,28,.93); border-radius: 14px; box-shadow: 0 10px 24px rgba(19,41,28,.24); transform: translate(-50%, 25px); opacity: 0; pointer-events: none; transition: .25s ease; }
     .toast.show { transform: translate(-50%, 0); opacity: 1; }
@@ -130,6 +145,7 @@
     .who .chip .avatar { width: 22px; height: 22px; line-height: 22px; font-size: 11px; }
     .large-button.checkin { width: 100%; margin-top: 12px; }
     .large-button:disabled { opacity: .55; }
+    .btn-delete-sm { background: #fee2e2; color: #dc2626; border: none; padding: 4px 8px; border-radius: 8px; font-size: 12px; cursor: pointer; font-weight: 700; }
     @media (max-height: 760px) { .detail-card { padding: 14px; } .facts { margin-top: 10px; } }
     @media (min-width: 700px) { body { padding: 18px 0; } .app { height: calc(100dvh - 36px); border-radius: 30px; } }
   </style>
@@ -189,13 +205,43 @@
       </div>
 
       <div class="who" id="who"></div>
+      
       <button class="large-button primary checkin" id="checkinButton"><i data-lucide="circle-check"></i>เช็กอินที่นี่</button>
+
+      <div class="park-actions">
+        <button class="large-button" id="reviewBtn"><i data-lucide="star"></i>รีวิวสถานที่</button>
+        <button class="large-button" id="shareButton"><i data-lucide="share-2"></i>แชร์ประสบการณ์</button>
+      </div>
 
       <div class="primary-actions">
         <button class="large-button primary" id="navigateButton"><i data-lucide="navigation"></i>นำทาง</button>
-        <button class="large-button" id="shareButton"><i data-lucide="share-2"></i>แชร์</button>
+      </div>
+
+      <!-- พื้นที่แสดงรายการรีวิว -->
+      <div class="review-section" id="reviewSection">
+        <div style="font-weight:700; margin-bottom:6px; font-size:14px;">ความคิดเห็นและรีวิว</div>
+        <div id="reviewList" style="max-height:150px; overflow-y:auto;"></div>
       </div>
     </article>
+
+    <!-- Modal เขียนรีวิว -->
+    <div class="modal-overlay" id="reviewModal">
+      <div class="modal-box">
+        <h3>รีวิวอุทยาน</h3>
+        <div class="star-select" id="starSelect">
+          <span data-v="1" class="active">★</span>
+          <span data-v="2" class="active">★</span>
+          <span data-v="3" class="active">★</span>
+          <span data-v="4" class="active">★</span>
+          <span data-v="5" class="active">★</span>
+        </div>
+        <textarea id="reviewComment" placeholder="เล่าความประทับใจ เช่น ธรรมชาติสวยงาม เจ้าหน้าที่บริการดี"></textarea>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+          <button class="large-button" id="cancelReview">ยกเลิก</button>
+          <button class="large-button primary" id="submitReview">บันทึกรีวิว</button>
+        </div>
+      </div>
+    </div>
 
     <section class="page" id="pageMe"></section>
     <section class="page" id="pageBoard"></section>
@@ -222,17 +268,14 @@
   <script>
     lucide.createIcons();
 
-    /* ===== ข้อมูลอุทยาน 159 แห่ง จาก Google My Maps "ที่ทำการอุทยานแห่งชาติ - By Adisak P." ===== */
     const EMBEDDED = [{"name":"อุทยานแห่งชาติเขานัน","lat":8.771209,"lng":99.804483,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติเขาหลวง","lat":8.368695,"lng":99.735585,"desc":""},{"name":"อุทยานแห่งชาติน้ำตกสี่ขีด","lat":9.014254,"lng":99.771783,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติหมู่เกาะชุมพร","lat":10.356986,"lng":99.231686,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติอ่าวพังงา","lat":8.404958,"lng":98.50846,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติแก่งกรุง","lat":9.307948,"lng":98.866061,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติเขาสก","lat":8.915772,"lng":98.527797,"desc":""},{"name":"อุทยานแห่งชาติคลองพนม","lat":8.879994,"lng":98.674082,"desc":""},{"name":"อุทยานแห่งชาติใต้ร่มเย็น","lat":8.863223,"lng":99.478789,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติกุยบุรี","lat":12.051777,"lng":99.623869,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติเขาสามร้อยยอด","lat":12.128416,"lng":99.95429,"desc":""},{"name":"อุทยานแห่งชาติน้ำตกห้วยยาง","lat":11.625503,"lng":99.614021,"desc":""},{"name":"อุทยานแห่งชาติหาดวนกร","lat":11.636081,"lng":99.702502,"desc":""},{"name":"อุทยานแห่งชาติอ่าวสยาม","lat":11.210309,"lng":99.523141,"desc":""},{"name":"อุทยานแห่งชาติน้ำตกหงาว","lat":9.856331,"lng":98.62769,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติลำน้ำกระบุรี","lat":10.084419,"lng":98.662647,"desc":""},{"name":"อุทยานแห่งชาติหมู่เกาะระนอง","lat":9.875025,"lng":98.587542,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติแหลมสน","lat":9.603229,"lng":98.469168,"desc":""},{"name":"อุทยานแห่งชาติธารเสด็จ - เกาะพะงัน","lat":9.735701,"lng":100.013204,"desc":""},{"name":"อุทยานแห่งชาติเขาพนมเบญจา","lat":8.240164,"lng":98.914147,"desc":""},{"name":"อุทยานแห่งชาติธารโบกขรณี","lat":8.389879,"lng":98.733229,"desc":""},{"name":"อุทยานแห่งชาติหมู่เกาะลันตา","lat":7.470411,"lng":99.09921,"desc":""},{"name":"อุทยานแห่งชาติหาดนพรัตน์ธารา-หมู่เกาะพีพี","lat":8.047085,"lng":98.799178,"desc":""},{"name":"อุทยานแห่งชาติหาดเจ้าไหม","lat":7.412069,"lng":99.34535,"desc":""},{"name":"อุทยานแห่งชาติน้ำตกโยง","lat":8.172284,"lng":99.741822,"desc":""},{"name":"อุทยานแห่งชาติหาดขนอม-หมู่เกาะทะเลใต้","lat":9.107808,"lng":99.903021,"desc":""},{"name":"อุทยานแห่งชาติหมู่เกาะเภตรา","lat":6.835302,"lng":99.755161,"desc":""},{"name":"อุทยานแห่งชาติทะเลบัน","lat":6.710379,"lng":100.170902,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติเขาน้ำค้าง","lat":6.599286,"lng":100.588049,"desc":""},{"name":"อุทยานแห่งชาติสันกาลาคีรี","lat":6.326626,"lng":100.923118,"desc":""},{"name":"อุทยานแห่งชาติเขาปู่-เขาย่า","lat":7.680722,"lng":99.871928,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติศรีพังงา","lat":8.997767,"lng":98.45828,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติเขาลำปี-หาดท้ายเหมือง","lat":8.438691,"lng":98.235354,"desc":""},{"name":"อุทยานแห่งชาติ เขาหลัก-ลำรู่","lat":8.626358,"lng":98.239814,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติเขาพนมเบญจา","lat":8.240164,"lng":98.914147,"desc":""},{"name":"อุทยานแห่งชาติหมู่เกาะลันตา","lat":7.470411,"lng":99.09921,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติหาดนพรัตน์ธารา-หมู่เกาะพีพี","lat":8.047073,"lng":98.799175,"desc":""},{"name":"อุทยานแห่งชาติสิรินาถ","lat":8.090306,"lng":98.298537,"desc":""},{"name":"อุทยานแห่งชาติบางลาง","lat":6.199378,"lng":101.172253,"desc":""},{"name":"อุทยานแห่งชาติน้ำตกทรายขาว","lat":6.658346,"lng":101.095201,"desc":""},{"name":"อุทยานแห่งชาติน้ำตกซีโป","lat":6.269734,"lng":101.63381,"desc":""},{"name":"อุทยานแห่งชาติอ่าวมะนาว-เขาตันหยง","lat":6.427002,"lng":101.854601,"desc":""},{"name":"อุทยานแห่งชาติบูโด-สุไหงปาดี","lat":6.500566,"lng":101.63638,"desc":""},{"name":"อุทยานแห่งชาติเขาคิชฌกูฏ","lat":12.839093,"lng":102.120875,"desc":""},{"name":"อุทยานแห่งชาติเขาสิบห้าชั้น","lat":13.175813,"lng":102.002151,"desc":""},{"name":"อุทยานแห่งชาติน้ำตกพลิ้ว","lat":12.529581,"lng":102.18422,"desc":""},{"name":"อุทยานแห่งชาติน้ำตกคลองแก้ว","lat":12.617821,"lng":102.577141,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติหมู่เกาะช้าง","lat":12.124744,"lng":102.269255,"desc":""},{"name":"อุทยานแห่งชาติทับลาน","lat":14.217911,"lng":101.90151,"desc":""},{"name":"สำนักงานอุทยานแห่งชาติเขาชะเมา-เขาวง","lat":12.913128,"lng":101.723174,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติ เขาแหลมหญ้า","lat":12.591412,"lng":101.418205,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติ ตาพระยา","lat":14.131234,"lng":102.669498,"desc":""},{"name":"อุทยานแห่งชาติปางสีดา","lat":13.983081,"lng":102.204674,"desc":""},{"name":"อุทยานแห่งชาติน้ำตกเจ็ดสาวน้อย","lat":14.725773,"lng":101.188993,"desc":""},{"name":"อุทยานแห่งชาติน้ำตกสามหลั่น","lat":14.440744,"lng":100.959626,"desc":""},{"name":"อุทยานแห่งชาติพุเตย","lat":14.946597,"lng":99.415781,"desc":""},{"name":"อุทยานแห่งชาติ เขาแหลม","lat":15.024357,"lng":98.597775,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติเขื่อนศรีนครินทร์","lat":14.639272,"lng":98.985626,"desc":""},{"name":"อุทยานแห่งชาติเฉลิมรัตนโกสินทร์","lat":14.661963,"lng":99.312291,"desc":""},{"name":"อุทยานแห่งชาติทองผาภูมิ","lat":14.693313,"lng":98.404544,"desc":""},{"name":"อุทยานแห่งชาติไทรโยค","lat":14.437605,"lng":98.850588,"desc":""},{"name":"อุทยานแห่งชาติลำคลองงู","lat":14.907838,"lng":98.736506,"desc":""},{"name":"อุทยานแห่งชาติเอราวัณ","lat":14.375496,"lng":99.143962,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติแก่งกระจาน","lat":12.884951,"lng":99.633164,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติคลองลาน","lat":16.129622,"lng":99.281412,"desc":""},{"name":"อุทยานแห่งชาติคลองวังเจ้า","lat":16.506038,"lng":99.170404,"desc":""},{"name":"ศูนย์บริการนักท่องเที่ยวอุทยานแห่งชาติแม่วงก์","lat":16.039062,"lng":99.233425,"desc":""},{"name":"อุทยานแห่งชาติขุนแจ","lat":19.076788,"lng":99.399369,"desc":""},{"name":"อุทยานแห่งชาติดอยหลวง","lat":19.443892,"lng":99.703084,"desc":""},{"name":"อุทยานแห่งชาติถ้ำหลวง-ขุนน้ำนางนอน","lat":20.381277,"lng":99.867434,"desc":""},{"name":"อุทยานแห่งชาติภูชี้ฟ้า","lat":19.850012,"lng":100.446012,"desc":""},{"name":"อุทยานแห่งชาติลำน้ำกก","lat":19.963091,"lng":99.67968,"desc":""},{"name":"อุทยานแห่งชาติขุนขาน","lat":18.853405,"lng":98.62177,"desc":""},{"name":"ที่ทำการ อุทยานแห่งชาติดอยผ้าห่มปก","lat":19.966032,"lng":99.154892,"desc":""},{"name":"อุทยานแห่งชาติ ดอยเวียงผา","lat":19.678399,"lng":99.197228,"desc":""},{"name":"อุทยานแห่งชาติดอยสุเทพ-ปุย","lat":18.807005,"lng":98.916091,"desc":""},{"name":"ดอยอินทนนท์","lat":18.588043,"lng":98.487061,"desc":""},{"name":"อุทยานแห่งชาติน้ำตกบัวตอง-น้ำพุเจ็ดสี","lat":19.069199,"lng":99.079491,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติผาแดง","lat":19.629131,"lng":98.956383,"desc":""},{"name":"อุทยานแห่งชาติแม่ตะไคร้","lat":18.966333,"lng":99.242083,"desc":""},{"name":"อุทยานแห่งชาติแม่โถ","lat":18.251564,"lng":98.209201,"desc":""},{"name":"อุทยานแห่งชาติแม่วาง","lat":18.526572,"lng":98.75426,"desc":""},{"name":"อุทยานแห่งชาติศรีลานนา","lat":19.17671,"lng":99.031908,"desc":""},{"name":"อุทยานแห่งชาติห้วยน้ำดัง","lat":19.303936,"lng":98.598869,"desc":""},{"name":"Ob Khan National Park","lat":18.723072,"lng":98.821566,"desc":""},{"name":"อุทยานแห่งชาติ ออบหลวง","lat":18.222541,"lng":98.481886,"desc":""},{"name":"อุทยานแห่งชาติขุนพะวอ","lat":17.038475,"lng":98.627762,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติดอยสอยมาลัย","lat":17.067943,"lng":99.085139,"desc":""},{"name":"อุทยานแห่งชาติตากสินมหาราช","lat":16.778628,"lng":98.928564,"desc":""},{"name":"อุทยานแห่งชาติน้ำตกพาเจริญ","lat":16.502057,"lng":98.752739,"desc":""},{"name":"อุทยานแห่งชาติแม่เมย","lat":17.481744,"lng":98.074618,"desc":""},{"name":"อุทยานแห่งชาติลานสาง","lat":16.782454,"lng":99.015681,"desc":""},{"name":"อุทยานแห่งชาติขุนน่าน","lat":19.182952,"lng":101.178087,"desc":""},{"name":"อุทยานแห่งชาติขุนสถาน","lat":18.277102,"lng":100.521349,"desc":""},{"name":"อุทยานแห่งชาติดอยภูคา","lat":19.198587,"lng":101.080321,"desc":""},{"name":"อุทยานแห่งชาติถ้ำสะเกิน","lat":19.381668,"lng":100.538465,"desc":""},{"name":"อุทยานแห่งชาตินันทบุรี","lat":19.129111,"lng":100.642412,"desc":""},{"name":"อุทยานแห่งชาติแม่จริม","lat":18.601533,"lng":100.980225,"desc":""},{"name":"อุทยานแห่งชาติศรีน่าน","lat":18.367578,"lng":100.839165,"desc":""},{"name":"อุทยานแห่งชาติดอยภูนาง","lat":18.855897,"lng":100.181416,"desc":""},{"name":"อุทยานแห่งชาติภูซาง","lat":19.663591,"lng":100.375896,"desc":""},{"name":"อุทยานแห่งชาติแม่ปืม","lat":19.353541,"lng":99.867304,"desc":""},{"name":"อุทยานแห่งชาติแควน้อย","lat":17.176064,"lng":100.397764,"desc":""},{"name":"อุทยานแห่งชาติทุ่งแสลงหลวง","lat":16.579067,"lng":100.882514,"desc":""},{"name":"Chat Trakan Waterfall National Park","lat":17.297811,"lng":100.683313,"desc":""},{"name":"อุทยานแห่งชาติภูหินร่องกล้า","lat":17.003913,"lng":100.994248,"desc":""},{"name":"อุทยานแห่งชาติเขาค้อ","lat":16.571785,"lng":100.97809,"desc":""},{"name":"อุทยานแห่งชาติ ตาดหมอก","lat":16.385706,"lng":101.268141,"desc":""},{"name":"อุทยานแห่งชาติน้ำหนาว","lat":16.739954,"lng":101.573719,"desc":""},{"name":"อุทยานแห่งชาติดอยผากลอง","lat":18.153496,"lng":99.987262,"desc":""},{"name":"อุทยานแห่งชาติแม่ยม","lat":18.611795,"lng":100.160296,"desc":""},{"name":"อุทยานแห่งชาติ เวียงโกศัย","lat":17.967782,"lng":99.593947,"desc":""},{"name":"อุทยานแห่งชาติถ้ำปลา-น้ำตกผาเสื่อ","lat":19.425603,"lng":97.987131,"desc":""},{"name":"อุทยานแห่งชาติน้ำตกแม่สุรินทร์","lat":18.942547,"lng":98.071213,"desc":""},{"name":"อุทยานแห่งชาติแม่เงา","lat":17.846198,"lng":97.976718,"desc":""},{"name":"อุทยานแห่งชาติแม่สะเรียง","lat":18.235548,"lng":97.945008,"desc":""},{"name":"อุทยานแห่งชาติสาละวิน","lat":18.165092,"lng":97.884302,"desc":""},{"name":"อุทยานแห่งชาติเขลางค์บรรพต","lat":18.255317,"lng":99.561778,"desc":""},{"name":"อุทยานแห่งชาติแจ้ซ้อน","lat":18.836605,"lng":99.47068,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติดอยจง","lat":17.917569,"lng":99.249762,"desc":""},{"name":"อุทยานแห่งชาติถ้ำผาไท","lat":18.605222,"lng":99.897757,"desc":""},{"name":"อุทยานแห่งชาติแม่วะ","lat":17.448258,"lng":99.225781,"desc":""},{"name":"อุทยานแห่งชาติ ดอยขุนตาล","lat":18.495692,"lng":99.271088,"desc":""},{"name":"อุทยานแห่งชาติแม่ปิง","lat":17.595967,"lng":98.805554,"desc":""},{"name":"อุทยานแห่งชาติรามคำแหง","lat":16.877428,"lng":99.693072,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติศรีสัชนาลัย","lat":17.55365,"lng":99.485187,"desc":""},{"name":"อุทยานแห่งชาติต้นสักใหญ่","lat":17.657361,"lng":100.569052,"desc":""},{"name":"อุทยานแห่งชาติภูสอยดาว","lat":17.698467,"lng":100.946306,"desc":""},{"name":"อุทยานแห่งชาติลำน้ำน่าน","lat":17.766972,"lng":100.486699,"desc":""},{"name":"อุทยานแห่งชาติน้ำพอง","lat":16.624376,"lng":102.570077,"desc":""},{"name":"อุทยานแห่งชาติภูเก้า- ภูพานคํา","lat":16.811546,"lng":102.611406,"desc":""},{"name":"อุทยานแห่งชาติภูผาม่าน","lat":16.756514,"lng":101.968485,"desc":""},{"name":"อุทยานแห่งชาติภูเวียง","lat":16.681093,"lng":102.237112,"desc":""},{"name":"อุทยานแห่งชาติตาดโตน","lat":15.980718,"lng":102.034494,"desc":""},{"name":"อุทยานแห่งชาติไทรทอง","lat":15.874626,"lng":101.510144,"desc":""},{"name":"อุทยานแห่งชาติป่าหินงาม","lat":15.631622,"lng":101.393892,"desc":""},{"name":"อุทยานแห่งชาติภูแลนคา","lat":15.99942,"lng":101.895607,"desc":""},{"name":"อุทยานแห่งชาติภูลังกา","lat":17.984748,"lng":104.140192,"desc":""},{"name":"อุทยานแห่งชาติเขาใหญ่","lat":14.439463,"lng":101.372436,"desc":""},{"name":"อุทยานแห่งชาติภูผาเทิบ","lat":16.434603,"lng":104.805529,"desc":""},{"name":"อุทยานแห่งชาติภูสระดอกบัว","lat":16.233205,"lng":104.780526,"desc":""},{"name":"อุทยานแห่งชาติภูกระดึง","lat":16.871305,"lng":101.845773,"desc":""},{"name":"อุทยานแห่งชาติภูเรือ","lat":17.51419,"lng":101.344913,"desc":""},{"name":"อุทยานแห่งชาติภูสวนทราย","lat":17.504848,"lng":100.940648,"desc":""},{"name":"อุทยานแห่งชาติเขาพระวิหาร","lat":14.416453,"lng":104.690405,"desc":""},{"name":"อุทยานแห่งชาติภูผายล","lat":16.92948,"lng":104.139397,"desc":""},{"name":"อุทยานแห่งชาติภูผาเหล็ก","lat":17.267502,"lng":103.457996,"desc":""},{"name":"อุทยานแห่งชาติภูพาน","lat":17.062341,"lng":103.9731,"desc":""},{"name":"อุทยานแห่งชาตินายูง-น้ำโสม","lat":17.924679,"lng":102.251,"desc":""},{"name":"อุทยานแห่งชาติแก่งตะนะ","lat":15.299547,"lng":105.476831,"desc":""},{"name":"อุทยานแห่งชาติผาแต้ม","lat":15.399114,"lng":105.508264,"desc":""},{"name":"อุทยานแห่งชาติภูจองนายอย","lat":14.434323,"lng":105.252158,"desc":""},{"name":"อุทยานแห่งชาติภูหินจอมธาตุ-ภูพระบาท","lat":17.347391,"lng":102.474197,"desc":""},{"name":"ที่ทำการอุทยานแห่งชาติตะรุเตา","lat":6.861011,"lng":99.722066,"desc":""},{"name":"อุทยานแห่งชาติเฉลิมพระเกียรติไทยประจัน จ.ราชบุรี","lat":13.266807,"lng":99.553924,"desc":""},{"name":"อุทยานแห่งชาติหมู่เกาะอ่างทอง","lat":9.635235,"lng":99.671822,"desc":""},{"name":"อุทยานแห่งชาติหมู่เกาะสุรินทร์","lat":9.434384,"lng":97.868119,"desc":""},{"name":"อุทยานแห่งชาติเจ็ดคด-โป่งก้อนเส้า","lat":14.493874,"lng":101.161605,"desc":""},{"name":"อุทยานแห่งชาติหมู่เกาะสิมิลัน","lat":8.657395,"lng":97.648888,"desc":""}];
 
-    /* ===== ตั้งค่า LINE / ฐานข้อมูล ===== */
     const CONFIG = {
-      LIFF_ID: "2011831930-6IzeMDOS",              // จาก LINE Developers > LIFF
-      API_URL: "https://script.google.com/macros/s/AKfycby_XfXNTL7M71tnSuEeDxUxYPq8eZL0nyJv8PMwcOcngN-RXiUWYsR3K2BRL74qJycO7Q/exec",              // URL Web App ของ Google Apps Script (Code.gs)
-      CHECKIN_RADIUS_KM: 0      // 0 = เช็กอินได้ทุกที่ ไม่จำกัดระยะ (ใส่ตัวเลข กม. ถ้าต้องการจำกัด)
+      LIFF_ID: "2011831930-6IzeMDOS",
+      API_URL: "https://script.google.com/macros/s/AKfycby_XfXNTL7M71tnSuEeDxUxYPq8eZL0nyJv8PMwcOcngN-RXiUWYsR3K2BRL74qJycO7Q/exec",
+      CHECKIN_RADIUS_KM: 0
     };
 
-    /* ===== สถานะ ===== */
     const map = L.map("map", { zoomControl: false }).setView([13.0, 101.0], 6);
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap contributors" }).addTo(map);
 
@@ -241,7 +284,7 @@
     const markerLayer = L.layerGroup().addTo(map);
     const markers = new Map();
 
-    let parks = [], userPos = null, userMarker = null, selected = null, maxKm = 0, toastTimer, firstAutoSelect = true;
+    let parks = [], userPos = null, userMarker = null, selected = null, maxKm = 0, toastTimer;
 
     function showToast(msg) {
       clearTimeout(toastTimer);
@@ -254,7 +297,6 @@
       parks = EMBEDDED.map((p, i) => ({ ...p, id: i }));
     }
 
-    /* ===== คำนวณระยะ ===== */
     function haversine(lat1, lng1, lat2, lng2) {
       const R = 6371, rad = Math.PI / 180;
       const dLat = (lat2 - lat1) * rad, dLng = (lng2 - lng1) * rad;
@@ -267,7 +309,6 @@
       return min < 60 ? `${min} นาที` : `${Math.floor(min / 60)} ชม. ${min % 60} นาที`;
     }
 
-    /* ===== แสดงผล ===== */
     function markerIcon(sel) {
       return L.divIcon({ className: "", html: `<div class="park-marker${sel ? " selected" : ""}"><span>🌲</span></div>`, iconSize: [40, 40], iconAnchor: [20, 38] });
     }
@@ -305,7 +346,7 @@
       strip.classList.toggle("hidden", detailCard.classList.contains("open"));
     }
 
-    function selectPark(p, fit = false) {
+    async function selectPark(p, fit = false) {
       selected = p;
       markers.forEach((m, park) => m.setIcon(markerIcon(park === p)));
       $("placeName").textContent = p.name;
@@ -314,6 +355,7 @@
       $("placeDrive").textContent = userPos ? fmtDrive(p.dist) : "-";
       $("placeCoord").textContent = `${p.lat.toFixed(3)}, ${p.lng.toFixed(3)}`;
       renderWho(p);
+      loadReviews(p.id);
       $("nearestTag").classList.toggle("hidden", !(userPos && parks[0] === p));
       detailCard.classList.add("open");
       strip.classList.add("hidden");
@@ -329,7 +371,6 @@
       render();
     }
 
-    /* ===== ตำแหน่งผู้ใช้ ===== */
     function locate(auto = false) {
       if (!navigator.geolocation) { showToast("อุปกรณ์นี้ไม่รองรับการระบุตำแหน่ง"); render(); return; }
       if (!auto) showToast("กำลังค้นหาตำแหน่งของคุณ");
@@ -338,14 +379,13 @@
         if (userMarker) map.removeLayer(userMarker);
         userMarker = L.marker([userPos.lat, userPos.lng], { icon: L.divIcon({ className: "", html: '<div class="user-marker"></div>', iconSize: [20, 20], iconAnchor: [10, 10] }), zIndexOffset: 1000 }).addTo(map);
         render();
-        if (parks.length) selectPark(parks[0], true);   // เด้งอุทยานใกล้ที่สุดทันที
+        if (parks.length) selectPark(parks[0], true);
       }, () => {
-        showToast("กรุณาอนุญาตการเข้าถึงตำแหน่ง เพื่อแสดงอุทยานใกล้คุณ");
+        showToast("กรุณาอนุญาตการเข้าถึงตำแหน่ง");
         render();
       }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
     }
 
-    /* ===== Events ===== */
     document.querySelectorAll(".filter-chip").forEach(btn => btn.addEventListener("click", () => {
       document.querySelectorAll(".filter-chip").forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
@@ -356,7 +396,59 @@
     searchInput.addEventListener("input", closeCard);
     $("closeCard").addEventListener("click", closeCard);
     $("locateButton").addEventListener("click", () => locate(false));
-    /* ===== บันทึกไอคอนไว้หน้าจอมือถือ ===== */
+
+    /* ===== จัดการรีวิวสถานที่ ===== */
+    let currentRating = 5;
+    $("reviewBtn").addEventListener("click", () => {
+      if (!me) return showToast("กรุณาเข้าสู่ระบบก่อนรีวิว");
+      $("reviewModal").classList.add("show");
+    });
+    $("cancelReview").addEventListener("click", () => $("reviewModal").classList.remove("show"));
+    
+    document.querySelectorAll("#starSelect span").forEach(star => {
+      star.addEventListener("click", (e) => {
+        currentRating = Number(e.target.dataset.v);
+        document.querySelectorAll("#starSelect span").forEach((s, idx) => {
+          s.classList.toggle("active", idx < currentRating);
+        });
+      });
+    });
+
+    $("submitReview").addEventListener("click", async () => {
+      const comment = $("reviewComment").value.trim();
+      if (!comment) return showToast("กรุณาใส่ข้อความรีวิว");
+      try {
+        await api("add_review", { parkId: selected.id, rating: currentRating, comment }, true);
+        showToast("บันทึกรีวิวสำเร็จ ⭐");
+        $("reviewComment").value = "";
+        $("reviewModal").classList.remove("show");
+        loadReviews(selected.id);
+      } catch (e) { showToast(e.message); }
+    });
+
+    async function loadReviews(parkId) {
+      const listEl = $("reviewList");
+      listEl.innerHTML = "<small style='color:var(--muted)'>กำลังโหลดรีวิว...</small>";
+      try {
+        const j = await api("get_reviews", { parkId });
+        if (!j.reviews || j.reviews.length === 0) {
+          listEl.innerHTML = "<small style='color:var(--muted)'>ยังไม่มีรีวิว มาเป็นคนแรกกัน!</small>";
+          return;
+        }
+        listEl.innerHTML = j.reviews.map(r => `
+          <div class="review-item">
+            <div style="display:flex; justify-content:between; align-items:center;">
+              <b>${esc(r.name)}</b>
+              <span class="stars">${"★".repeat(r.rating)}${"☆".repeat(5 - r.rating)}</span>
+            </div>
+            <p style="margin:4px 0 0; color:var(--text);">${esc(r.comment)}</p>
+          </div>
+        `).join("");
+      } catch (e) {
+        listEl.innerHTML = "<small style='color:var(--muted)'>โหลดรีวิวไม่สำเร็จ</small>";
+      }
+    }
+
     const isStandalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
     const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
     let deferredPrompt = null;
@@ -405,29 +497,29 @@
         await deferredPrompt.userChoice.catch(() => {});
         deferredPrompt = null;
       } else if (isIOS) {
-        showSheet(["เปิดหน้านี้ด้วย <b>Safari</b>", "แตะปุ่ม <b>แชร์</b> (สี่เหลี่ยมมีลูกศรขึ้น) ด้านล่าง", "เลื่อนลงแล้วเลือก <b>เพิ่มไปยังหน้าจอโฮม</b>", "แตะ <b>เพิ่ม</b>"]);
+        showSheet(["เปิดหน้านี้ด้วย <b>Safari</b>", "แตะปุ่ม <b>แชร์</b> (สี่เหลี่ยมมีลูกศรขึ้น)", "เลือก <b>เพิ่มไปยังหน้าจอโฮม</b>"]);
       } else {
-        showSheet(["เปิดหน้านี้ด้วย <b>Chrome</b>", "แตะเมนู <b>⋮</b> มุมขวาบน", "เลือก <b>เพิ่มไปยังหน้าจอหลัก</b> (หรือ <b>ติดตั้งแอป</b>)", "แตะ <b>เพิ่ม</b>"]);
+        showSheet(["เปิดหน้านี้ด้วย <b>Chrome</b>", "แตะเมนู <b>⋮</b> มุมขวาบน", "เลือก <b>เพิ่มไปยังหน้าจอหลัก</b>"]);
       }
     });
 
     $("navigateButton").addEventListener("click", () => {
       if (selected) window.open(`https://www.google.com/maps/dir/?api=1&destination=${selected.lat},${selected.lng}`, "_blank");
     });
+    
     $("shareButton").addEventListener("click", async () => {
       if (!selected) return;
-      const data = { title: selected.name, text: `อุทยาน ${selected.name}`, url: `https://www.google.com/maps?q=${selected.lat},${selected.lng}` };
+      const data = { title: selected.name, text: `มาเที่ยวอุทยาน ${selected.name} กันเถอะ!`, url: `https://www.google.com/maps?q=${selected.lat},${selected.lng}` };
       try {
         if (navigator.share) await navigator.share(data);
-        else { await navigator.clipboard.writeText(data.url); showToast("คัดลอกลิงก์แล้ว"); }
+        else { await navigator.clipboard.writeText(data.url); showToast("คัดลอกลิงก์สถานที่แล้ว"); }
       } catch (e) {}
     });
 
-    /* ===== LINE login + เช็กอิน + สมาชิก + Leader ===== */
     let me = null, checkins = [], boardMode = "total", lastFetch = 0, loading = false;
     try { checkins = JSON.parse(localStorage.getItem("pk_checkins")) || []; } catch (e) {}
     const esc = t => String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-    const avatar = (u, cls = "") => /^https:\/\//.test(u.pic || "") ? `<img class="avatar ${cls}" loading="lazy" decoding="async" src="${esc(u.pic)}" alt="">` : `<div class="avatar ${cls}">${esc((u.name || "?")[0])}</div>`;
+    const avatar = (u, cls = "") => /^https:\/\//.test(u.pic || "") ? `<img class="avatar ${cls}" loading="lazy" src="${esc(u.pic)}" alt="">` : `<div class="avatar ${cls}">${esc((u.name || "?")[0])}</div>`;
     const fmtDate = ts => new Date(ts).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "2-digit" });
 
     async function api(action, payload = {}, auth = false) {
@@ -443,6 +535,7 @@
     const SKEY = "pk_session";
     const saveSession = v => { try { localStorage.setItem(SKEY, JSON.stringify(v)); } catch (e) {} };
     const clearSession = () => { try { localStorage.removeItem(SKEY); } catch (e) {} me = null; };
+    
     async function initLine() {
       try { const sv = JSON.parse(localStorage.getItem(SKEY)); if (sv && sv.token) me = sv; } catch (e) {}
       if (!CONFIG.LIFF_ID || !window.liff) return;
@@ -453,12 +546,9 @@
           me = { token: j.token, id: j.uid, name: j.name, pic: j.pic };
           saveSession(me);
         }
-      } catch (e) { showToast("เชื่อมต่อ LINE ไม่สำเร็จ: " + e.message); }
+      } catch (e) {}
     }
-    function login() {
-      if (!CONFIG.LIFF_ID) return showToast("ยังไม่ได้ตั้งค่า LIFF_ID");
-      liff.login({ redirectUri: location.href });
-    }
+    function login() { liff.login({ redirectUri: location.href }); }
 
     function refreshViews() { if (selected) renderWho(selected); renderMe(); renderBoard(); }
     async function loadCheckins(force = true) {
@@ -469,7 +559,7 @@
         checkins = j.r.map(([uid, parkId, ts]) => ({ uid, parkId, ts, name: j.u[uid][0], pic: j.u[uid][1] }));
         lastFetch = Date.now();
         try { localStorage.setItem("pk_checkins", JSON.stringify(checkins)); } catch (e) {}
-      } catch (e) { showToast("โหลดข้อมูลเช็กอินไม่สำเร็จ: " + e.message); }
+      } catch (e) {}
       loading = false; refreshViews();
     }
 
@@ -489,11 +579,6 @@
 
     $("checkinButton").addEventListener("click", async () => {
       if (!me) return login();
-      if (CONFIG.CHECKIN_RADIUS_KM > 0) {
-        if (!userPos) return showToast("ต้องเปิดตำแหน่งก่อนเช็กอิน");
-        const d = haversine(userPos.lat, userPos.lng, selected.lat, selected.lng);
-        if (d > CONFIG.CHECKIN_RADIUS_KM) return showToast(`ต้องอยู่ห่างอุทยานไม่เกิน ${CONFIG.CHECKIN_RADIUS_KM} กม. (ตอนนี้ ${fmtKm(d)})`);
-      }
       $("checkinButton").disabled = true;
       try {
         await api("checkin", { parkId: selected.id, parkName: selected.name, lat: userPos?.lat, lng: userPos?.lng, plat: selected.lat, plng: selected.lng }, true);
@@ -503,25 +588,39 @@
       renderWho(selected);
     });
 
+    /* ===== ลบจุดเช็กอินในหน้าสมาชิก ===== */
+    async function deleteCheckin(parkId) {
+      if (!confirm("คุณต้องการลบประวัติการเช็กอินอุทยานนี้ใช่หรือไม่?")) return;
+      try {
+        await api("delete_checkin", { parkId }, true);
+        showToast("ลบจุดเช็กอินสำเร็จ");
+        await loadCheckins();
+      } catch (e) { showToast(e.message); }
+    }
+
     function renderMe() {
       const el = $("pageMe");
-      if (!me) { el.innerHTML = `<h2>สมาชิก</h2><div class="card" style="text-align:center"><p>เข้าสู่ระบบด้วย LINE เพื่อเช็กอินและดูสถิติของคุณ</p><button class="large-button primary" style="width:100%" id="loginBtn">เข้าสู่ระบบด้วย LINE</button>
-        <p style="margin:16px 0 6px;font-size:13px;color:var(--muted)">ล็อกอินจากเบราว์เซอร์อื่นไว้แล้ว? วางรหัสเข้าสู่ระบบ</p>
+      if (!me) {
+        el.innerHTML = `<h2>สมาชิก</h2><div class="card" style="text-align:center"><p>เข้าสู่ระบบด้วย LINE เพื่อเช็กอินและดูสถิติของคุณ</p><button class="large-button primary" style="width:100%" id="loginBtn">เข้าสู่ระบบด้วย LINE</button>
+        <p style="margin:16px 0 6px;font-size:13px;color:var(--muted)">หรือวางรหัสเข้าสู่ระบบ</p>
         <input id="codeInput" placeholder="วางรหัสที่นี่" style="width:100%;height:44px;padding:0 12px;border:1px solid var(--border);border-radius:14px"><button class="large-button" style="width:100%;margin-top:8px" id="codeBtn">ใช้รหัส</button></div>`;
         $("loginBtn").onclick = login;
         $("codeBtn").onclick = async () => { try { const t = $("codeInput").value.trim(), j = await api("me", { token: t }); me = { token: t, id: j.uid, name: j.name, pic: j.pic }; saveSession(me); renderMe(); loadCheckins(); } catch (e) { showToast(e.message); } };
-        return; }
+        return;
+      }
       const mine = checkins.filter(c => c.uid === me.id), per = new Map();
       mine.forEach(c => { const o = per.get(Number(c.parkId)) || { n: 0, last: c.ts }; o.n++; if (c.ts > o.last) o.last = c.ts; per.set(Number(c.parkId), o); });
       const pct = Math.round(per.size / parks.length * 100);
       const list = [...per.entries()].sort((a, b) => b[1].last.localeCompare(a[1].last));
+      
       el.innerHTML = `<h2>สมาชิก</h2>
         <div class="card"><div class="profile">${avatar(me, "lg")}<div><b style="font-size:18px">${esc(me.name)}</b><br><small style="color:var(--muted)">นักสำรวจอุทยาน</small></div></div>
           <div class="facts"><div class="fact"><strong>${per.size}</strong><span>อุทยานที่เคยไป</span></div><div class="fact"><strong>${mine.length}</strong><span>เช็กอินทั้งหมด</span></div><div class="fact"><strong>${pct}%</strong><span>จาก ${parks.length} แห่ง</span></div></div>
           <div class="bar"><div style="width:${pct}%"></div></div></div>
-        <div class="card"><b>อุทยานที่ไปมาแล้ว</b>${list.length ? list.map(([id, o]) => `<div class="row"><span class="grow">${esc(parks[id]?.name)}</span><small>${o.n} ครั้ง · ${fmtDate(o.last)}</small></div>`).join("") : `<p style="color:var(--muted)">${loading ? "กำลังโหลด…" : "ยังไม่เคยเช็กอิน"}</p>`}</div>
-        <button class="large-button" style="width:100%;margin-bottom:10px" id="copyBtn">คัดลอกรหัสเข้าสู่ระบบ (ใช้กับไอคอนแอป)</button><button class="large-button" style="width:100%" id="logoutBtn">ออกจากระบบ</button>`;
-      $("copyBtn").onclick = async () => { try { await navigator.clipboard.writeText(me.token); showToast("คัดลอกแล้ว — อย่าส่งให้คนอื่น"); } catch (e) { showToast("คัดลอกไม่สำเร็จ"); } };
+        <div class="card"><b>อุทยานที่ไปมาแล้ว</b>${list.length ? list.map(([id, o]) => `<div class="row"><span class="grow">${esc(parks[id]?.name)}</span><small>${fmtDate(o.last)}</small><button class="btn-delete-sm" onclick="deleteCheckin(${id})">ลบ</button></div>`).join("") : `<p style="color:var(--muted)">${loading ? "กำลังโหลด…" : "ยังไม่เคยเช็กอิน"}</p>`}</div>
+        <button class="large-button" style="width:100%;margin-bottom:10px" id="copyBtn">คัดลอกรหัสเข้าสู่ระบบ</button><button class="large-button" style="width:100%" id="logoutBtn">ออกจากระบบ</button>`;
+      
+      $("copyBtn").onclick = async () => { try { await navigator.clipboard.writeText(me.token); showToast("คัดลอกรหัสแล้ว"); } catch (e) {} };
       $("logoutBtn").onclick = () => { clearSession(); try { if (window.liff && liff.isLoggedIn()) liff.logout(); } catch (e) {} location.reload(); };
     }
 
@@ -529,7 +628,7 @@
       const m = new Map();
       checkins.forEach(c => { const u = m.get(c.uid) || { uid: c.uid, name: c.name, pic: c.pic, total: 0, set: new Set() }; u.total++; u.set.add(Number(c.parkId)); u.name = c.name; u.pic = c.pic; m.set(c.uid, u); });
       const key = u => boardMode === "total" ? u.total : u.set.size;
-      const rank = [...m.values()].sort((a, b) => key(b) - key(a) || b.set.size - a.set.size).slice(0, 50);
+      const rank = [...m.values()].sort((a, b) => key(b) - key(b) || b.set.size - a.set.size).slice(0, 50);
       const medals = ["🥇", "🥈", "🥉"];
       $("pageBoard").innerHTML = `<h2>Leader</h2>
         <div class="filters"><button class="filter-chip ${boardMode === "total" ? "active" : ""}" data-m="total">เช็กอินมากสุด</button><button class="filter-chip ${boardMode === "parks" ? "active" : ""}" data-m="parks">ไปหลายอุทยานสุด</button></div>
@@ -547,12 +646,11 @@
       if (t !== "map") loadCheckins(false);
     }));
 
-    /* ===== เริ่มทำงาน: โหลดข้อมูล → หาตำแหน่ง → เด้งอุทยานใกล้สุด ===== */
     loadData().then(() => {
       render(); locate(true);
-      const li = initLine();           // กู้ล็อกอินที่จำไว้ทันที
-      renderMe(); renderBoard();       // แสดงข้อมูลแคชก่อน ไม่ต้องรอเครือข่าย
-      loadCheckins();                  // โหลดจริงพร้อมกับ LIFF ไม่รอกัน
+      const li = initLine();
+      renderMe(); renderBoard();
+      loadCheckins();
       li.then(() => { renderMe(); if (selected) renderWho(selected); });
     });
   </script>
