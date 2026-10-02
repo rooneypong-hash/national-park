@@ -103,15 +103,26 @@
     .large-button i { width: 20px; }
 
     .review-section { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
-    .review-item { font-size: 13px; margin-bottom: 12px; background: #fdfdfd; padding: 12px 14px; border-radius: 16px; border: 1px solid var(--border); box-shadow: 0 4px 12px rgba(0,0,0,0.03); }
+    .review-item { font-size: 13px; margin-bottom: 12px; background: #fdfdfd; padding: 14px; border-radius: 18px; border: 1px solid var(--border); box-shadow: 0 4px 12px rgba(0,0,0,0.03); }
     .review-item .stars { color: #fbbf24; }
 
-    /* สไตล์รูปภาพรีวิวแบบ Instagram */
-    .ig-gallery { display: flex; gap: 8px; margin-top: 10px; overflow-x: auto; scrollbar-width: none; }
-    .ig-gallery::-webkit-scrollbar { display: none; }
-    .ig-img-wrap { position: relative; flex: 0 0 auto; width: 110px; height: 110px; border-radius: 12px; overflow: hidden; border: 1px solid #e1e8ed; background: #f0f4f1; cursor: pointer; }
-    .ig-img-wrap img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.2s ease; }
-    .ig-img-wrap:hover img { transform: scale(1.05); }
+    /* สไตล์รูปภาพรีวิวแบบ IG เต็มตา */
+    .ig-post-images { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+    .ig-single-img { width: 100%; max-height: 380px; object-fit: cover; border-radius: 14px; border: 1px solid var(--border); cursor: pointer; }
+    .ig-multi-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+    .ig-multi-grid img { width: 100%; height: 180px; object-fit: cover; border-radius: 10px; border: 1px solid var(--border); cursor: pointer; }
+    .ig-multi-grid img:first-child:nth-last-child(odd) { grid-column: span 2; height: 220px; }
+
+    /* ปุ่ม Like และ คอมเมนต์ */
+    .review-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; padding-top: 8px; border-top: 1px solid #f0f4f1; }
+    .like-btn { display: flex; align-items: center; gap: 5px; background: none; border: none; cursor: pointer; font-weight: 700; font-size: 13px; color: var(--muted); }
+    .like-btn.liked { color: #ef4444; }
+    .comment-section { margin-top: 8px; background: #f6f8f6; padding: 10px; border-radius: 14px; }
+    .comment-list { max-height: 130px; overflow-y: auto; margin-bottom: 8px; display: flex; flex-direction: column; gap: 6px; }
+    .comment-item { font-size: 12px; background: #fff; padding: 6px 10px; border-radius: 10px; border: 1px solid var(--border); }
+    .comment-input-box { display: flex; gap: 6px; }
+    .comment-input-box input { flex: 1; height: 36px; padding: 0 12px; border: 1px solid var(--border); border-radius: 10px; font-size: 12px; background: #fff; outline: none; }
+    .comment-input-box button { height: 36px; padding: 0 14px; background: var(--primary); border: none; border-radius: 10px; font-weight: 700; font-size: 12px; cursor: pointer; color: var(--primary-dark); }
 
     .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 3000; display: none; align-items: center; justify-content: center; padding: 16px; }
     .modal-overlay.show { display: flex; }
@@ -229,7 +240,7 @@
 
       <div class="review-section" id="reviewSection">
         <div style="font-weight:700; margin-bottom:6px; font-size:14px;">ความคิดเห็นและรีวิว</div>
-        <div id="reviewList" style="max-height:220px; overflow-y:auto;"></div>
+        <div id="reviewList" style="max-height:240px; overflow-y:auto;"></div>
       </div>
     </article>
 
@@ -256,6 +267,13 @@
           <button class="large-button" id="cancelReview">ยกเลิก</button>
           <button class="large-button primary" id="submitReview">บันทึกรีวิว</button>
         </div>
+      </div>
+    </div>
+
+    <!-- Modal สำหรับขยายดูรูปภาพขนาดใหญ่ -->
+    <div class="modal-overlay" id="lightboxModal" onclick="closeLightbox()" style="z-index: 4000;">
+      <div style="max-width:92%; max-height:92%; display:grid; place-items:center;">
+        <img id="lightboxImg" style="max-width:100%; max-height:85vh; border-radius:12px; object-fit:contain;" />
       </div>
     </div>
 
@@ -455,7 +473,7 @@
       container.innerHTML = "";
 
       for (let file of files) {
-        const base64 = await compressImage(file, 600, 0.7);
+        const base64 = await compressImage(file, 800, 0.75);
         reviewImagesBase64.push(base64);
         const img = document.createElement("div");
         img.className = "ig-img-wrap";
@@ -518,11 +536,30 @@
           let firstImg = "";
           if (r.images && r.images.length > 0) {
             firstImg = r.images[0];
-            imgHtml = `<div class="ig-gallery">` + 
-              r.images.map(img => `<div class="ig-img-wrap" onclick="window.open('${img}')"><img src="${img}" loading="lazy"></div>`).join("") +
-              `</div>`;
+            if (r.images.length === 1) {
+              imgHtml = `<div class="ig-post-images"><img src="${r.images[0]}" class="ig-single-img" onclick="openLightbox('${r.images[0]}')" loading="lazy"></div>`;
+            } else {
+              imgHtml = `<div class="ig-post-images ig-multi-grid">` + 
+                r.images.map(img => `<img src="${img}" onclick="openLightbox('${img}')" loading="lazy">`).join("") +
+                `</div>`;
+            }
           }
+
           const encodedImg = firstImg ? encodeURIComponent(firstImg) : "";
+          const isLiked = me && r.likes && r.likes.includes(me.id);
+          const likeCount = r.likes ? r.likes.length : 0;
+
+          let commentsHtml = "";
+          if (r.comments && r.comments.length > 0) {
+            commentsHtml = r.comments.map(c => `
+              <div class="comment-item">
+                <b>${esc(c.name)}:</b> ${esc(c.comment)}
+              </div>
+            `).join("");
+          } else {
+            commentsHtml = `<div style="font-size:11px; color:var(--muted)">ยังไม่มีความคิดเห็น</div>`;
+          }
+
           return `
             <div class="review-item">
               <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -534,8 +571,20 @@
               </div>
               <p style="margin:8px 0; color:var(--text); word-break:break-word; font-size:14px; line-height:1.4;">${esc(r.comment)}</p>
               ${imgHtml}
-              <div style="display:flex; justify-content:flex-end; margin-top:8px;">
-                <button onclick="shareReview('${esc(r.name)}', ${r.rating}, '${esc(r.comment)}', '${esc(selected.name)}', ${selected.id}, '${encodedImg}')" style="background:#3b82f6; color:#fff; border:none; padding:5px 12px; border-radius:8px; font-size:12px; cursor:pointer; font-weight:700;">🔗 แชร์รีวิว</button>
+              <div class="review-footer">
+                <button class="like-btn ${isLiked ? 'liked' : ''}" onclick="toggleLike(${r.rowIndex})">
+                  ❤️ ${likeCount} ถูกใจ
+                </button>
+                <button onclick="shareReview('${esc(r.name)}', ${r.rating}, '${esc(r.comment)}', '${esc(selected.name)}', ${selected.id}, '${encodedImg}')" style="background:#3b82f6; color:#fff; border:none; padding:4px 10px; border-radius:6px; font-size:11px; cursor:pointer; font-weight:700;">🔗 แชร์</button>
+              </div>
+              <div class="comment-section">
+                <div class="comment-list" id="commList_${r.rowIndex}">
+                  ${commentsHtml}
+                </div>
+                <div class="comment-input-box">
+                  <input type="text" id="commInput_${r.rowIndex}" placeholder="แสดงความคิดเห็น..." onkeydown="if(event.key==='Enter') addComment(${r.rowIndex})">
+                  <button onclick="addComment(${r.rowIndex})">ส่ง</button>
+                </div>
               </div>
             </div>
           `;
@@ -543,6 +592,35 @@
       } catch (e) {
         listEl.innerHTML = `<small style='color:#dc2626'>โหลดรีวิวไม่สำเร็จ (${esc(e.message)})</small>`;
       }
+    }
+
+    async function toggleLike(rowIndex) {
+      if (!me) return showToast("กรุณาเข้าสู่ระบบก่อนกดถูกใจ");
+      try {
+        await api("toggle_like", { rowIndex }, true);
+        if (selected) loadReviews(selected.id);
+      } catch(e) { showToast(e.message); }
+    }
+
+    async function addComment(rowIndex) {
+      if (!me) return showToast("กรุณาเข้าสู่ระบบก่อนแสดงความคิดเห็น");
+      const input = $(`commInput_${rowIndex}`);
+      const comment = input.value.trim();
+      if (!comment) return;
+      try {
+        await api("add_comment", { rowIndex, comment }, true);
+        input.value = "";
+        if (selected) loadReviews(selected.id);
+      } catch(e) { showToast(e.message); }
+    }
+
+    function openLightbox(src) {
+      $("lightboxImg").src = src;
+      $("lightboxModal").classList.add("show");
+    }
+
+    function closeLightbox() {
+      $("lightboxModal").classList.remove("show");
     }
 
     async function shareReview(name, rating, comment, parkName, parkId, encodedImg) {
