@@ -90,14 +90,14 @@
     .fact i { width: 19px; height: 19px; color: #2b7a3c; }
     .fact strong { display: block; margin-top: 4px; font-size: 13px; line-height: 1.3; }
     .fact span { display: block; margin-top: 2px; overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-    
+
     .park-actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 12px; }
-    .primary-actions { display: grid; grid-template-columns: 1.4fr 1fr; gap: 10px; margin-top: 10px; }
+    .primary-actions { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 10px; }
     .large-button { display: flex; align-items: center; justify-content: center; gap: 8px; height: 50px; font-size: 15px; font-weight: 800; background: #fff; border: 1px solid #d6ded7; border-radius: 18px; cursor: pointer; }
     .large-button.primary { color: #153c21; background: var(--primary); border-color: var(--primary); box-shadow: 0 9px 20px rgba(115,220,75,.25); }
     .large-button i { width: 20px; }
 
-    /* รีวิวส่วนแสดงผลใน Card */
+    /* รีวิวแสดงผลใน Card */
     .review-section { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
     .review-item { font-size: 13px; margin-bottom: 8px; background: #f9faf9; padding: 8px 12px; border-radius: 12px; }
     .review-item .stars { color: #fbbf24; }
@@ -217,7 +217,6 @@
         <button class="large-button primary" id="navigateButton"><i data-lucide="navigation"></i>นำทาง</button>
       </div>
 
-      <!-- พื้นที่แสดงรายการรีวิว -->
       <div class="review-section" id="reviewSection">
         <div style="font-weight:700; margin-bottom:6px; font-size:14px;">ความคิดเห็นและรีวิว</div>
         <div id="reviewList" style="max-height:150px; overflow-y:auto;"></div>
@@ -437,7 +436,7 @@
         }
         listEl.innerHTML = j.reviews.map(r => `
           <div class="review-item">
-            <div style="display:flex; justify-content:between; align-items:center;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
               <b>${esc(r.name)}</b>
               <span class="stars">${"★".repeat(r.rating)}${"☆".repeat(5 - r.rating)}</span>
             </div>
@@ -537,16 +536,23 @@
     const clearSession = () => { try { localStorage.removeItem(SKEY); } catch (e) {} me = null; };
     
     async function initLine() {
-      try { const sv = JSON.parse(localStorage.getItem(SKEY)); if (sv && sv.token) me = sv; } catch (e) {}
-      if (!CONFIG.LIFF_ID || !window.liff) return;
+      if (!CONFIG.LIFF_ID || !window.liff) {
+        try { const sv = JSON.parse(localStorage.getItem(SKEY)); if (sv && sv.token) me = sv; } catch (e) {}
+        return;
+      }
       try {
         await liff.init({ liffId: CONFIG.LIFF_ID });
-        if (liff.isLoggedIn() && !me) {
+        if (liff.isLoggedIn()) {
           const j = await api("login", { idToken: liff.getIDToken() });
           me = { token: j.token, id: j.uid, name: j.name, pic: j.pic };
           saveSession(me);
+        } else {
+          clearSession();
+          try { const sv = JSON.parse(localStorage.getItem(SKEY)); if (sv && sv.token) me = sv; } catch (e) {}
         }
-      } catch (e) {}
+      } catch (e) {
+        try { const sv = JSON.parse(localStorage.getItem(SKEY)); if (sv && sv.token) me = sv; } catch (e) {}
+      }
     }
     function login() { liff.login({ redirectUri: location.href }); }
 
@@ -556,7 +562,7 @@
       loading = true; refreshViews();
       try {
         const j = await api("list");
-        checkins = j.r.map(([uid, parkId, ts]) => ({ uid, parkId, ts, name: j.u[uid][0], pic: j.u[uid][1] }));
+        checkins = j.r.map(([uid, parkId, ts, parkName]) => ({ uid, parkId, ts, parkName, name: j.u[uid]?.[0] || "สมาชิก", pic: j.u[uid]?.[1] || "" }));
         lastFetch = Date.now();
         try { localStorage.setItem("pk_checkins", JSON.stringify(checkins)); } catch (e) {}
       } catch (e) {}
@@ -588,7 +594,6 @@
       renderWho(selected);
     });
 
-    /* ===== ลบจุดเช็กอินในหน้าสมาชิก ===== */
     async function deleteCheckin(parkId) {
       if (!confirm("คุณต้องการลบประวัติการเช็กอินอุทยานนี้ใช่หรือไม่?")) return;
       try {
@@ -609,9 +614,56 @@
         return;
       }
       const mine = checkins.filter(c => c.uid === me.id), per = new Map();
-      mine.forEach(c => { const o = per.get(Number(c.parkId)) || { n: 0, last: c.ts }; o.n++; if (c.ts > o.last) o.last = c.ts; per.set(Number(c.parkId), o); });
+      mine.forEach(c => { const o = per.get(Number(c.parkId)) || { n: 0, last: c.ts, parkName: c.parkName }; o.n++; if (c.ts > o.last) o.last = c.ts; per.set(Number(c.parkId), o); });
       const pct = Math.round(per.size / parks.length * 100);
       const list = [...per.entries()].sort((a, b) => b[1].last.localeCompare(a[1].last));
+      
+      el.innerHTML = `<h2>สมาชิก</h2>
+        <div class="card"><div class="profile">${avatar(me, "lg")}<div><b style="font-size:18px">${esc(me.name)}</b><br><small style="color:var(--muted)">นักสำรวจอุทยาน</small></div></div>
+          <div class="facts"><div class="fact"><strong>${per.size}</strong><span>อุทยานที่เคยไป</span></div><div class="fact"><strong>${mine.length}</strong><span>เช็กอินทั้งหมด</span></div><div class="fact"><strong>${pct}%</strong><span>จาก ${parks.length} แห่ง</span></div></div>
+          <div class="bar"><div style="width:${pct}%"></div></div></div>
+        <div class="card"><b>อุทยานที่ไปมาแล้ว</b>${list.length ? list.map(([id, o]) => {
+          const displayName = o.parkName || parks[id]?.name || "อุทยานแห่งชาติ";
+          return `<div class="row"><span class="grow">${esc(displayName)}</span><small>${fmtDate(o.last)}</small><button class="btn-delete-sm" onclick="deleteCheckin(${id})">ลบ</button></div>`;
+        }).join("") : `<p style="color:var(--muted)">${loading ? "กำลังโหลด…" : "ยังไม่เคยเช็กอิน"}</p>`}</div>
+        <button class="large-button" style="width:100%;margin-bottom:10px" id="copyBtn">คัดลอกรหัสเข้าสู่ระบบ</button><button class="large-button" style="width:100%" id="logoutBtn">ออกจากระบบ</button>`;
+      
+      $("copyBtn").onclick = async () => { try { await navigator.clipboard.writeText(me.token); showToast("คัดลอกรหัสแล้ว"); } catch (e) {} };
+      $("logoutBtn").onclick = () => { clearSession(); try { if (window.liff && liff.isLoggedIn()) liff.logout(); } catch (e) {} location.reload(); };
+    }
+
+    function renderBoard() {
+      const m = new Map();
+      checkins.forEach(c => { const u = m.get(c.uid) || { uid: c.uid, name: c.name, pic: c.pic, total: 0, set: new Set() }; u.total++; u.set.add(Number(c.parkId)); u.name = c.name; u.pic = c.pic; m.set(c.uid, u); });
+      const key = u => boardMode === "total" ? u.total : u.set.size;
+      const rank = [...m.values()].sort((a, b) => key(b) - key(a) || b.set.size - a.set.size).slice(0, 50);
+      const medals = ["🥇", "🥈", "🥉"];
+      $("pageBoard").innerHTML = `<h2>Leader</h2>
+        <div class="filters"><button class="filter-chip ${boardMode === "total" ? "active" : ""}" data-m="total">เช็กอินมากสุด</button><button class="filter-chip ${boardMode === "parks" ? "active" : ""}" data-m="parks">ไปหลายอุทยานสุด</button></div>
+        <div class="card">${rank.length ? rank.map((u, i) => `<div class="row ${me && u.uid === me.id ? "me" : ""}"><span class="medal">${medals[i] || i + 1}</span>${avatar(u)}<span class="grow">${esc(u.name)}</span><small>${u.total} ครั้ง · ${u.set.size} แห่ง</small></div>`).join("") : `<p style="color:var(--muted)">${loading ? "กำลังโหลด…" : "ยังไม่มีข้อมูลเช็กอิน"}</p>`}</div>`;
+      document.querySelectorAll("#pageBoard .filter-chip").forEach(b => b.onclick = () => { boardMode = b.dataset.m; renderBoard(); });
+    }
+
+    document.querySelectorAll(".nav-item").forEach(b => b.addEventListener("click", () => {
+      const t = b.dataset.tab;
+      document.querySelectorAll(".nav-item").forEach(x => x.classList.toggle("active", x === b));
+      $("pageMe").classList.toggle("show", t === "me");
+      $("pageBoard").classList.toggle("show", t === "board");
+      if (t !== "map") { detailCard.classList.remove("open"); selected = null; }
+      else { render(); setTimeout(() => map.invalidateSize(), 50); }
+      if (t !== "map") loadCheckins(false);
+    }));
+
+    loadData().then(() => {
+      render(); locate(true);
+      const li = initLine();
+      renderMe(); renderBoard();
+      loadCheckins();
+      li.then(() => { renderMe(); if (selected) renderWho(selected); });
+    });
+  </script>
+</body>
+</html>nst list = [...per.entries()].sort((a, b) => b[1].last.localeCompare(a[1].last));
       
       el.innerHTML = `<h2>สมาชิก</h2>
         <div class="card"><div class="profile">${avatar(me, "lg")}<div><b style="font-size:18px">${esc(me.name)}</b><br><small style="color:var(--muted)">นักสำรวจอุทยาน</small></div></div>
