@@ -101,7 +101,6 @@
     .review-item { font-size: 13px; margin-bottom: 10px; background: #f9faf9; padding: 10px 12px; border-radius: 14px; border: 1px solid var(--border); }
     .review-item .stars { color: #fbbf24; }
 
-    /* Modal เขียนรีวิวพร้อมอัปโหลดรูป */
     .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 3000; display: none; align-items: center; justify-content: center; padding: 16px; }
     .modal-overlay.show { display: flex; }
     .modal-box { background: #fff; width: 100%; max-width: 400px; max-height: 90vh; overflow-y: auto; padding: 20px; border-radius: 24px; box-shadow: var(--shadow); }
@@ -366,6 +365,11 @@
       strip.classList.add("hidden");
       lucide.createIcons();
 
+      // อัปเดต URL พารามิเตอร์ของเบราว์เซอร์เมื่อเลือกสถานที่
+      const url = new URL(window.location);
+      url.searchParams.set('park', p.id);
+      window.history.replaceState({}, '', url);
+
       if (fit && userPos) map.fitBounds([[userPos.lat, userPos.lng], [p.lat, p.lng]], { padding: [70, 70], maxZoom: 14, paddingBottomRight: [70, 300] });
       else map.panTo([p.lat, p.lng], { animate: true });
     }
@@ -373,6 +377,9 @@
     function closeCard() {
       selected = null;
       detailCard.classList.remove("open");
+      const url = new URL(window.location);
+      url.searchParams.delete('park');
+      window.history.replaceState({}, '', url);
       render();
     }
 
@@ -384,12 +391,28 @@
         if (userMarker) map.removeLayer(userMarker);
         userMarker = L.marker([userPos.lat, userPos.lng], { icon: L.divIcon({ className: "", html: '<div class="user-marker"></div>', iconSize: [20, 20], iconAnchor: [10, 10] }), zIndexOffset: 1000 }).addTo(map);
         render();
-        if (parks.length) selectPark(parks[0], true);
+        
+        // ตรวจสอบว่ามีพารามิเตอร์ ?park= ใน URL หรือไม่ ถ้ามีให้เปิดสถานนั้นทันที
+        const urlParams = new URLSearchParams(window.location.search);
+        const parkParam = urlParams.get('park');
+        if (parkParam !== null && parks[Number(parkParam)]) {
+          selectPark(parks[Number(parkParam)], true);
+        } else if (parks.length && firstAutoSelect) {
+          firstAutoSelect = false;
+          selectPark(parks[0], true);
+        }
       }, () => {
         showToast("กรุณาอนุญาตการเข้าถึงตำแหน่ง");
         render();
+        const urlParams = new URLSearchParams(window.location.search);
+        const parkParam = urlParams.get('park');
+        if (parkParam !== null && parks[Number(parkParam)]) {
+          selectPark(parks[Number(parkParam)], true);
+        }
       }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
     }
+
+    let firstAutoSelect = true;
 
     document.querySelectorAll(".filter-chip").forEach(btn => btn.addEventListener("click", () => {
       document.querySelectorAll(".filter-chip").forEach(b => b.classList.remove("active"));
@@ -402,7 +425,6 @@
     $("closeCard").addEventListener("click", closeCard);
     $("locateButton").addEventListener("click", () => locate(false));
 
-    /* ===== จัดการรีวิวและอัปโหลดรูปภาพ ===== */
     let currentRating = 5;
     let reviewImagesBase64 = [];
 
@@ -426,7 +448,6 @@
       });
     });
 
-    // บีบอัดและแปลงรูปภาพเป็น Base64 (สูงสุด 3 รูป)
     $("reviewFileinput").addEventListener("change", async (e) => {
       const files = Array.from(e.target.files).slice(0, 3);
       reviewImagesBase64 = [];
@@ -512,7 +533,7 @@
               <p style="margin:4px 0; color:var(--text); word-break:break-word;">${esc(r.comment)}</p>
               ${imgHtml}
               <div style="display:flex; justify-content:flex-end; margin-top:6px;">
-                <button onclick="shareReview('${esc(r.name)}', ${r.rating}, '${esc(r.comment)}', '${esc(selected.name)}')" style="background:#3b82f6; color:#fff; border:none; padding:4px 10px; border-radius:6px; font-size:11px; cursor:pointer; font-weight:700;">🔗 แชร์รีวิว</button>
+                <button onclick="shareReview('${esc(r.name)}', ${r.rating}, '${esc(r.comment)}', '${esc(selected.name)}', ${selected.id})" style="background:#3b82f6; color:#fff; border:none; padding:4px 10px; border-radius:6px; font-size:11px; cursor:pointer; font-weight:700;">🔗 แชร์รีวิว</button>
               </div>
             </div>
           `;
@@ -522,14 +543,16 @@
       }
     }
 
-    // ฟังก์ชันแชร์รีวิว
-    function shareReview(name, rating, comment, parkName) {
-      const text = `⭐ รีวิวอุทยาน ${parkName} โดยคุณ ${name}\nคะแนน: ${"★".repeat(rating)}${"☆".repeat(5 - rating)}\n"${comment}"\n\nผ่านระบบ "อุทยานใกล้ฉัน"`;
+    // ฟังก์ชันแชร์รีวิว พร้อมลิงก์ตรงไปยังสถานที่
+    function shareReview(name, rating, comment, parkName, parkId) {
+      const baseUrl = window.location.origin + window.location.pathname;
+      const shareUrl = `${baseUrl}?park=${parkId}`;
+      const text = `⭐ รีวิวอุทยาน ${parkName} โดยคุณ ${name}\nคะแนน: ${"★".repeat(rating)}${"☆".repeat(5 - rating)}\n"${comment}"\n\nคลิกดูสถานที่:\n${shareUrl}`;
       if (navigator.share) {
-        navigator.share({ title: `รีวิว ${parkName}`, text: text }).catch(() => {});
+        navigator.share({ title: `รีวิว ${parkName}`, text: text, url: shareUrl }).catch(() => {});
       } else {
         navigator.clipboard.writeText(text);
-        showToast("คัดลอกข้อความรีวิวสำหรับแชร์แล้ว!");
+        showToast("คัดลอกลิงก์รีวิวและข้อความแล้ว!");
       }
     }
 
@@ -593,10 +616,12 @@
     
     $("shareButton").addEventListener("click", async () => {
       if (!selected) return;
-      const data = { title: selected.name, text: `มาเที่ยวอุทยาน ${selected.name} กันเถอะ!`, url: `https://www.google.com/maps?q=${selected.lat},${selected.lng}` };
+      const baseUrl = window.location.origin + window.location.pathname;
+      const shareUrl = `${baseUrl}?park=${selected.id}`;
+      const data = { title: selected.name, text: `มาเที่ยวอุทยาน ${selected.name} กันเถอะ!`, url: shareUrl };
       try {
         if (navigator.share) await navigator.share(data);
-        else { await navigator.clipboard.writeText(data.url); showToast("คัดลอกลิงก์สถานที่แล้ว"); }
+        else { await navigator.clipboard.writeText(shareUrl); showToast("คัดลอกลิงก์สถานที่แล้ว"); }
       } catch (e) {}
     });
 
@@ -620,26 +645,38 @@
     const saveSession = v => { try { localStorage.setItem(SKEY, JSON.stringify(v)); } catch (e) {} };
     const clearSession = () => { try { localStorage.removeItem(SKEY); } catch (e) {} me = null; };
     
+    // ระบบล็อกอิน LINE ครั้งเดียวจบ ไม่หลุดเซสชัน
     async function initLine() {
-      if (!CONFIG.LIFF_ID || !window.liff) {
-        try { const sv = JSON.parse(localStorage.getItem(SKEY)); if (sv && sv.token) me = sv; } catch (e) {}
-        return;
-      }
+      try { 
+        const sv = JSON.parse(localStorage.getItem(SKEY)); 
+        if (sv && sv.token) me = sv; 
+      } catch (e) {}
+
+      if (!CONFIG.LIFF_ID || !window.liff) return;
+      
       try {
         await liff.init({ liffId: CONFIG.LIFF_ID });
         if (liff.isLoggedIn()) {
-          const j = await api("login", { idToken: liff.getIDToken() });
-          me = { token: j.token, id: j.uid, name: j.name, pic: j.pic };
-          saveSession(me);
-        } else {
-          clearSession();
-          try { const sv = JSON.parse(localStorage.getItem(SKEY)); if (sv && sv.token) me = sv; } catch (e) {}
+          // ถ้ายังไม่มี token ในเครื่อง หรือต้องการยืนยันตัวตนอัตโนมัติ
+          const idToken = liff.getIDToken();
+          if (idToken) {
+            const j = await api("login", { idToken: idToken });
+            if (!j.error) {
+              me = { token: j.token, id: j.uid, name: j.name, pic: j.pic };
+              saveSession(me);
+            }
+          }
         }
-      } catch (e) {
-        try { const sv = JSON.parse(localStorage.getItem(SKEY)); if (sv && sv.token) me = sv; } catch (e) {}
+      } catch (e) {}
+    }
+
+    function login() { 
+      if (window.liff && liff.isInClient()) {
+        liff.login();
+      } else {
+        liff.login({ redirectUri: location.href }); 
       }
     }
-    function login() { liff.login({ redirectUri: location.href }); }
 
     function refreshViews() { if (selected) renderWho(selected); renderMe(); renderBoard(); }
     async function loadCheckins(force = true) {
@@ -748,11 +785,23 @@
     }));
 
     loadData().then(() => {
-      render(); locate(true);
-      const li = initLine();
-      renderMe(); renderBoard();
+      render(); 
+      locate(true);
+      
+      initLine().then(() => { 
+        renderMe(); 
+        if (selected) renderWho(selected); 
+      });
+      
+      renderBoard();
       loadCheckins();
-      li.then(() => { renderMe(); if (selected) renderWho(selected); });
+
+      // ตรวจสอบลิงก์แชร์ที่มีพารามิเตอร์ ?park= เมื่อโหลดเว็บ
+      const urlParams = new URLSearchParams(window.location.search);
+      const parkParam = urlParams.get('park');
+      if (parkParam !== null && parks[Number(parkParam)]) {
+        setTimeout(() => selectPark(parks[Number(parkParam)], true), 300);
+      }
     });
   </script>
 </body>
