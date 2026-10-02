@@ -524,16 +524,56 @@
       } catch (e) { showToast(e.message); }
     });
 
-    async function loadReviews(parkId) {
-      const listEl = $("reviewList");
-      listEl.innerHTML = "<small style='color:var(--muted)'>กำลังโหลดรีวิว...</small>";
+    // ================= Reviews: cache + preload + optimistic UI =================
+    const RV_KEY = "pk_reviews";
+    const reviewCache = {};      // parkId -> reviews[]
+    const reviewFetched = {};    // parkId -> เวลาที่โหลดล่าสุด
+    let reviewVer = 0, pendingOps = 0;
+    try {
+      const saved = JSON.parse(localStorage.getItem(RV_KEY)) || {};
+      Object.keys(saved).forEach(k => reviewCache[k] = saved[k]);
+    } catch (e) {}
+
+    function persistReviews() {
       try {
-        const j = await api("get_reviews", { parkId });
-        if (!j.reviews || j.reviews.length === 0) {
-          listEl.innerHTML = "<small style='color:var(--muted)'>ยังไม่มีรีวิว มาเป็นคนแรกกัน!</small>";
-          return;
-        }
-        listEl.innerHTML = j.reviews.map(r => {
+        const lite = {};
+        Object.keys(reviewCache).forEach(k => lite[k] = reviewCache[k].map(r => ({ ...r, images: [] })));
+        localStorage.setItem(RV_KEY, JSON.stringify(lite));
+      } catch (e) {}
+    }
+
+    // โหลดจากเซิร์ฟเวอร์เบื้องหลัง คืนค่า true ถ้าข้อมูลเปลี่ยน
+    async function fetchReviews(parkId) {
+      const ver = reviewVer;
+      const j = await api("get_reviews", { parkId });
+      const list = j.reviews || [];
+      // ถ้ามีการกดไลก์/คอมเมนต์ระหว่างรอ ให้ทิ้งผลที่อาจเก่ากว่า
+      if (ver !== reviewVer || pendingOps > 0) return false;
+      reviewFetched[parkId] = Date.now();
+      const changed = JSON.stringify(list) !== JSON.stringify(reviewCache[parkId]);
+      reviewCache[parkId] = list;
+      if (changed) persistReviews();
+      return changed;
+    }
+
+    function renderReviews(parkId) {
+      if (!selected || String(selected.id) !== String(parkId)) return;
+      const listEl = $("reviewList");
+      const reviews = reviewCache[parkId];
+      if (!reviews) return;
+
+      // เก็บข้อความที่กำลังพิมพ์/โฟกัส/ตำแหน่งเลื่อน ไว้ก่อนวาดใหม่
+      const drafts = {}; let focusId = null; const scrollTop = listEl.scrollTop;
+      listEl.querySelectorAll('input[id^="commInput_"]').forEach(i => {
+        if (i.value) drafts[i.id] = i.value;
+        if (document.activeElement === i) focusId = i.id;
+      });
+
+      if (reviews.length === 0) {
+        listEl.innerHTML = "<small style='color:var(--muted)'>ยังไม่มีรีวิว มาเป็นคนแรกกัน!</small>";
+        return;
+      }
+      listEl.innerHTML = reviews.map(r => {
           let imgHtml = "";
           let firstImg = "";
           if (r.images && r.images.length > 0) {
@@ -555,9 +595,9 @@
           let commentsHtml = "";
           if (r.comments && r.comments.length > 0) {
             commentsHtml = r.comments.map(c => `
-              <div class="comment-item">
+              <div class="comment-item" ${c.pending ? 'style="opacity:.55"' : ''}>
                 <span><b>${esc(c.name)}:</b> ${esc(c.comment)}</span>
-                ${me && (c.uid === me.id || isMyReview) ? `<button class="btn-del-text" onclick="deleteComment('${r.reviewId}', '${c.id}')">ลบ</button>` : ''}
+                ${me && !c.pending && (c.uid === me.id || isMyReview) ? `<button class="btn-del-text" onclick="deleteComment('${r.reviewId}', '${c.id}')">ลบ</button>` : ''}
               </div>
             `).join("");
           } else {
@@ -596,47 +636,92 @@
             </div>
           `;
         }).join("");
+
+      Object.entries(drafts).forEach(([id, v]) => { const el = $(id); if (el) el.value = v; });
+      if (focusId && $(focusId)) $(focusId).focus();
+      listEl.scrollTop = scrollTop;
+    }
+
+    async function loadReviews(parkId) {
+      const listEl = $("reviewList");
+      const cached = reviewCache[parkId];
+      if (cached) renderReviews(parkId);                       // แสดงของเดิมทันที
+      else listEl.innerHTML = "<small style='color:var(--muted)'>กำลังโหลดรีวิว...</small>";
+      try {
+        const changed = await fetchReviews(parkId);            // แล้วอัปเดตเบื้องหลัง
+        if (changed || !cached) renderReviews(parkId);
       } catch (e) {
-        listEl.innerHTML = `<small style='color:#dc2626'>โหลดรีวิวไม่สำเร็จ (${esc(e.message)})</small>`;
+        if (!cached) listEl.innerHTML = `<small style='color:#dc2626'>โหลดรีวิวไม่สำเร็จ (${esc(e.message)})</small>`;
       }
     }
 
+    // อัปเดตหน้าจอทันที แล้วค่อยส่งไปเซิร์ฟเวอร์ ถ้าพลาดจะย้อนกลับ
+    async function optimistic(pid, next, call) {
+      const prev = reviewCache[pid] || [];
+      pendingOps++; reviewVer++;
+      reviewCache[pid] = next(prev);
+      renderReviews(pid);
+      let ok = true;
+      try { await call(); }
+      catch (e) { ok = false; reviewCache[pid] = prev; showToast(e.message); }
+      finally { pendingOps--; reviewVer++; }
+      renderReviews(pid);
+      persistReviews();
+      if (!pendingOps) fetchReviews(pid).then(ch => { if (ch) renderReviews(pid); }).catch(() => {});
+      return ok;
+    }
+    const patchReview = (list, id, fn) => list.map(r => r.reviewId === id ? fn(r) : r);
+
     async function toggleLike(reviewId) {
       if (!me) return showToast("กรุณาเข้าสู่ระบบก่อนกดถูกใจ");
-      try {
-        await api("toggle_like", { reviewId }, true);
-        if (selected) loadReviews(selected.id);
-      } catch(e) { showToast(e.message); }
+      if (!selected) return;
+      await optimistic(selected.id, list => patchReview(list, reviewId, r => {
+        const likes = r.likes || [];
+        return { ...r, likes: likes.includes(me.id) ? likes.filter(x => x !== me.id) : [...likes, me.id] };
+      }), () => api("toggle_like", { reviewId }, true));
     }
 
     async function addComment(reviewId) {
       if (!me) return showToast("กรุณาเข้าสู่ระบบก่อนแสดงความคิดเห็น");
+      if (!selected) return;
       const input = $(`commInput_${reviewId}`);
       const comment = input.value.trim();
       if (!comment) return;
-      try {
-        await api("add_comment", { reviewId, comment }, true);
-        input.value = "";
-        if (selected) loadReviews(selected.id);
-      } catch(e) { showToast(e.message); }
+      input.value = "";
+      const tmp = { id: "tmp_" + Date.now(), uid: me.id, name: me.name, pic: me.pic, comment, ts: new Date().toISOString(), pending: true };
+      const ok = await optimistic(selected.id, list => patchReview(list, reviewId, r => ({ ...r, comments: [...(r.comments || []), tmp] })),
+        () => api("add_comment", { reviewId, comment }, true));
+      if (!ok) { const el = $(`commInput_${reviewId}`); if (el) el.value = comment; }
     }
 
     async function deleteReview(reviewId) {
       if (!confirm("คุณต้องการลบรีวิวนี้ใช่หรือไม่?")) return;
-      try {
-        await api("delete_review", { reviewId }, true);
-        showToast("ลบรีวิวสำเร็จ");
-        if (selected) loadReviews(selected.id);
-      } catch(e) { showToast(e.message); }
+      if (!selected) return;
+      const ok = await optimistic(selected.id, list => list.filter(r => r.reviewId !== reviewId),
+        () => api("delete_review", { reviewId }, true));
+      if (ok) showToast("ลบรีวิวสำเร็จ");
     }
 
     async function deleteComment(reviewId, commentId) {
       if (!confirm("คุณต้องการลบความคิดเห็นนี้ใช่หรือไม่?")) return;
-      try {
-        await api("delete_comment", { reviewId, commentId }, true);
-        showToast("ลบความคิดเห็นสำเร็จ");
-        if (selected) loadReviews(selected.id);
-      } catch(e) { showToast(e.message); }
+      if (!selected) return;
+      const ok = await optimistic(selected.id, list => patchReview(list, reviewId, r => ({ ...r, comments: (r.comments || []).filter(c => c.id !== commentId) })),
+        () => api("delete_comment", { reviewId, commentId }, true));
+      if (ok) showToast("ลบความคิดเห็นสำเร็จ");
+    }
+
+    // โหลดรีวิวของอุทยานที่คนเช็กอินเยอะ/ใกล้ตัว ไว้ล่วงหน้า
+    let prefetched = false;
+    function prefetchReviews() {
+      if (prefetched || !parks.length) return;
+      prefetched = true;
+      const count = {};
+      checkins.forEach(c => count[c.parkId] = (count[c.parkId] || 0) + 1);
+      const ids = Object.keys(count).sort((a, b) => count[b] - count[a]).slice(0, 5).map(Number);
+      if (userPos) parks.slice(0, 3).forEach(p => ids.push(p.id));
+      [...new Set(ids)].filter(id => !reviewFetched[id]).forEach((id, i) => {
+        setTimeout(() => { if (!pendingOps) fetchReviews(id).catch(() => {}); }, 800 * (i + 1));
+      });
     }
 
     function openLightbox(src) {
@@ -807,16 +892,20 @@
     }
 
     function refreshViews() { if (selected) renderWho(selected); renderMe(); renderBoard(); }
+    let loadSeq = 0;
     async function loadCheckins(force = true) {
-      if (loading || (!force && Date.now() - lastFetch < 20000)) return;
+      if ((loading && !force) || (!force && Date.now() - lastFetch < 20000)) return;
+      const seq = ++loadSeq;
       loading = true; refreshViews();
       try {
         const j = await api("list");
+        if (seq !== loadSeq) return;   // มีคำขอใหม่กว่า ทิ้งผลเก่า
         checkins = j.r.map(([uid, parkId, ts, parkName]) => ({ uid, parkId, ts, parkName, name: j.u[uid]?.[0] || "สมาชิก", pic: j.u[uid]?.[1] || "" }));
         lastFetch = Date.now();
         try { localStorage.setItem("pk_checkins", JSON.stringify(checkins)); } catch (e) {}
+        prefetchReviews();
       } catch (e) {}
-      loading = false; refreshViews();
+      if (seq === loadSeq) { loading = false; refreshViews(); }
     }
 
     const dayTH = d => new Date(d).toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" });
@@ -835,22 +924,32 @@
 
     $("checkinButton").addEventListener("click", async () => {
       if (!me) return login();
-      $("checkinButton").disabled = true;
+      // แสดงผลเช็กอินทันที แล้วค่อยยืนยันกับเซิร์ฟเวอร์
+      const rec = { uid: me.id, parkId: selected.id, ts: new Date().toISOString(), parkName: selected.name, name: me.name, pic: me.pic };
+      checkins.push(rec);
+      renderWho(selected); renderMe(); renderBoard();
       try {
         await api("checkin", { parkId: selected.id, parkName: selected.name, lat: userPos?.lat, lng: userPos?.lng, plat: selected.lat, plng: selected.lng }, true);
         showToast("เช็กอินสำเร็จ 🌲");
-        await loadCheckins();
-      } catch (e) { showToast(e.message); if (/เซสชัน/.test(e.message)) { clearSession(); renderMe(); } }
-      renderWho(selected);
+        loadCheckins();
+      } catch (e) {
+        checkins = checkins.filter(c => c !== rec);
+        showToast(e.message);
+        if (/เซสชัน/.test(e.message)) { clearSession(); renderMe(); }
+      }
+      if (selected) renderWho(selected); renderMe(); renderBoard();
     });
 
     async function deleteCheckin(parkId) {
       if (!confirm("คุณต้องการลบประวัติการเช็กอินอุทยานนี้ใช่หรือไม่?")) return;
+      const prev = checkins;
+      checkins = checkins.filter(c => !(me && c.uid === me.id && Number(c.parkId) === Number(parkId)));
+      refreshViews();
       try {
         await api("delete_checkin", { parkId }, true);
         showToast("ลบจุดเช็กอินสำเร็จ");
-        await loadCheckins();
-      } catch (e) { showToast(e.message); }
+        loadCheckins();
+      } catch (e) { checkins = prev; refreshViews(); showToast(e.message); }
     }
 
     function renderMe() {
@@ -932,6 +1031,15 @@
         }, 400);
       }
     });
+
+    // รีเฟรชข้อมูลเบื้องหลังเป็นระยะ และเมื่อกลับมาเปิดแอป
+    setInterval(() => {
+      if (document.hidden) return;
+      loadCheckins(false);
+      const typing = document.activeElement && document.activeElement.id && document.activeElement.id.startsWith("commInput_") && document.activeElement.value;
+      if (selected && !pendingOps && !typing) fetchReviews(selected.id).then(ch => { if (ch) renderReviews(selected.id); }).catch(() => {});
+    }, 45000);
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) loadCheckins(false); });
   </script>
 </body>
 </html>
