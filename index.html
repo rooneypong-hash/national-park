@@ -106,14 +106,12 @@
     .review-item { font-size: 13px; margin-bottom: 12px; background: #fdfdfd; padding: 14px; border-radius: 18px; border: 1px solid var(--border); box-shadow: 0 4px 12px rgba(0,0,0,0.03); }
     .review-item .stars { color: #fbbf24; }
 
-    /* รูปภาพรีวิวแบบเต็มตา */
     .ig-post-images { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
     .ig-single-img { width: 100%; max-height: 380px; object-fit: cover; border-radius: 14px; border: 1px solid var(--border); cursor: pointer; }
     .ig-multi-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
     .ig-multi-grid img { width: 100%; height: 180px; object-fit: cover; border-radius: 10px; border: 1px solid var(--border); cursor: pointer; }
     .ig-multi-grid img:first-child:nth-last-child(odd) { grid-column: span 2; height: 220px; }
 
-    /* ปุ่ม Like และ คอมเมนต์ */
     .review-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; padding-top: 8px; border-top: 1px solid #f0f4f1; }
     .like-btn { display: flex; align-items: center; gap: 5px; background: none; border: none; cursor: pointer; font-weight: 700; font-size: 13px; color: var(--muted); }
     .like-btn.liked { color: #ef4444; }
@@ -125,6 +123,12 @@
     .comment-input-box button { height: 36px; padding: 0 14px; background: var(--primary); border: none; border-radius: 10px; font-weight: 700; font-size: 12px; cursor: pointer; color: var(--primary-dark); }
     
     .btn-del-text { background: none; border: none; color: #dc2626; font-size: 11px; cursor: pointer; padding: 2px 6px; font-weight: 700; }
+
+    /* Progress bar อัปโหลดรูป */
+    .progress-box { display: none; margin-top: 12px; }
+    .progress-box.show { display: block; }
+    .progress-bar-bg { width: 100%; height: 10px; background: #e7ece7; border-radius: 99px; overflow: hidden; margin-top: 6px; }
+    .progress-bar-fill { width: 0%; height: 100%; background: var(--primary); transition: width 0.3s ease; }
 
     .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 3000; display: none; align-items: center; justify-content: center; padding: 16px; }
     .modal-overlay.show { display: flex; }
@@ -260,12 +264,23 @@
         <textarea id="reviewComment" placeholder="เล่าความประทับใจ เช่น ธรรมชาติสวยงาม ห้องน้ำสะอาด"></textarea>
         
         <div style="margin-bottom: 14px;">
-          <label style="font-size: 13px; font-weight: 700; color: var(--muted); display: block; margin-bottom: 6px;">แนบรูปภาพประกอบ (สูงสุด 6 รูป)</label>
+          <label style="font-size: 13px; font-weight: 700; color: var(--muted); display: block; margin-bottom: 6px;">แนบรูปภาพประกอบ (สูงสุด 5 รูป)</label>
           <input type="file" id="reviewFileinput" accept="image/*" multiple style="width: 100%; font-size: 12px; padding: 6px; background: #f3f6f3; border-radius: 8px; border: 1px solid var(--border);" />
           <div id="imagePreviewContainer" style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;"></div>
         </div>
 
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+        <!-- แถบ Progress Bar แสดงเปอร์เซ็นต์การอัปโหลด -->
+        <div class="progress-box" id="progressBox">
+          <div style="display:flex; justify-content:space-between; font-size:12px; font-weight:700;">
+            <span id="progressText">กำลังย่อและอัปโหลดรูปภาพ...</span>
+            <span id="progressPercent">0%</span>
+          </div>
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill" id="progressBarFill"></div>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top: 14px;">
           <button class="large-button" id="cancelReview">ยกเลิก</button>
           <button class="large-button primary" id="submitReview">บันทึกรีวิว</button>
         </div>
@@ -308,7 +323,7 @@
 
     const CONFIG = {
       LIFF_ID: "2011831930-6IzeMDOS",
-      API_URL: "https://script.google.com/macros/s/AKfycbyUJN_9ZQmZ53DHztkUVNl890sDKFFoicIAAGpNt1GNrmVsZ7Sc9TqZytE44teg006L0w/exec",
+      API_URL: "https://script.google.com/macros/s/AKfycby_XfXNTL7M71tnSuEeDxUxYPq8eZL0nyJv8PMwcOcngN-RXiUWYsR3K2BRL74qJycO7Q/exec",
       CHECKIN_RADIUS_KM: 0
     };
 
@@ -468,18 +483,19 @@
       });
     });
 
+    // ฟังก์ชันย่อรูปอัตโนมัติ (ด้านยาวไม่เกิน 2048 px)
     $("reviewFileinput").addEventListener("change", async (e) => {
-      const files = Array.from(e.target.files).slice(0, 6);
+      const files = Array.from(e.target.files).slice(0, 5); // รองรับสูงสุด 5 รูป
       reviewImagesBase64 = [];
       const container = $("imagePreviewContainer");
       container.innerHTML = "";
 
       for (let file of files) {
-        const base64 = await compressImage(file, 800, 0.75);
+        const base64 = await compressImage(file, 2048, 0.8);
         reviewImagesBase64.push(base64);
         const img = document.createElement("div");
         img.className = "ig-img-wrap";
-        img.innerHTML = `<img src="${base64}">`;
+        img.innerHTML = `<img src="${base64}" style="width:55px; height:55px; object-fit:cover; border-radius:8px; border:1px solid var(--border);">`;
         container.appendChild(img);
       }
     });
@@ -495,9 +511,14 @@
             const canvas = document.createElement("canvas");
             let width = img.width;
             let height = img.height;
-            if (width > maxWidth) {
-              height = Math.round((height * maxWidth) / width);
-              width = maxWidth;
+            if (width > maxWidth || height > maxWidth) {
+              if (width > height) {
+                height = Math.round((height * maxWidth) / width);
+                width = maxWidth;
+              } else {
+                width = Math.round((width * maxWidth) / height);
+                height = maxWidth;
+              }
             }
             canvas.width = width;
             canvas.height = height;
@@ -512,69 +533,72 @@
     $("submitReview").addEventListener("click", async () => {
       const comment = $("reviewComment").value.trim();
       if (!comment) return showToast("กรุณาใส่ข้อความรีวิว");
+
+      const submitBtn = $("submitReview");
+      const cancelBtn = $("cancelReview");
+      const progressBox = $("progressBox");
+      const fill = $("progressBarFill");
+      const percentEl = $("progressPercent");
+      const textEl = $("progressText");
+
+      submitBtn.disabled = true;
+      cancelBtn.disabled = true;
+      progressBox.classList.add("show");
+      
+      let progress = 15;
+      fill.style.width = progress + "%";
+      percentEl.textContent = progress + "%";
+
+      const interval = setInterval(() => {
+        if (progress < 85) {
+          progress += 15;
+          fill.style.width = progress + "%";
+          percentEl.textContent = progress + "%";
+          if (progress > 40) textEl.textContent = "กำลังอัปโหลดรูปภาพขึ้น Google Drive...";
+        }
+      }, 400);
+
       try {
         await api("add_review", { parkId: selected.id, rating: currentRating, comment, images: reviewImagesBase64 }, true);
-        showToast("บันทึกรีวิวสำเร็จ ⭐");
-        $("reviewComment").value = "";
-        reviewImagesBase64 = [];
-        $("imagePreviewContainer").innerHTML = "";
-        $("reviewFileinput").value = "";
-        $("reviewModal").classList.remove("show");
-        loadReviews(selected.id);
-      } catch (e) { showToast(e.message); }
+        
+        clearInterval(interval);
+        fill.style.width = "100%";
+        percentEl.textContent = "100%";
+        textEl.textContent = "อัปโหลดเรียบร้อยแล้ว!";
+
+        setTimeout(() => {
+          showToast("บันทึกรีวิวสำเร็จ ⭐");
+          $("reviewComment").value = "";
+          reviewImagesBase64 = [];
+          $("imagePreviewContainer").innerHTML = "";
+          $("reviewFileinput").value = "";
+          progressBox.classList.remove("show");
+          fill.style.width = "0%";
+          $("reviewModal").classList.remove("show"); // ปิดหน้าต่างรีวิวทันที
+          submitBtn.disabled = false;
+          cancelBtn.disabled = false;
+          loadReviews(selected.id);
+        }, 400);
+
+      } catch (e) {
+        clearInterval(interval);
+        progressBox.classList.remove("show");
+        submitBtn.disabled = false;
+        cancelBtn.disabled = false;
+        showToast(e.message);
+      }
     });
 
-    // ================= Reviews: cache + preload + optimistic UI =================
-    const RV_KEY = "pk_reviews";
-    const reviewCache = {};      // parkId -> reviews[]
-    const reviewFetched = {};    // parkId -> เวลาที่โหลดล่าสุด
-    let reviewVer = 0, pendingOps = 0;
-    try {
-      const saved = JSON.parse(localStorage.getItem(RV_KEY)) || {};
-      Object.keys(saved).forEach(k => reviewCache[k] = saved[k]);
-    } catch (e) {}
-
-    function persistReviews() {
-      try { localStorage.setItem(RV_KEY, JSON.stringify(reviewCache)); return; } catch (e) {}   // เก็บรูปเต็มก่อน
-      try {                                                                                      // เต็มโควตา → เก็บเฉพาะข้อความ
-        const lite = {};
-        Object.keys(reviewCache).forEach(k => lite[k] = reviewCache[k].map(r => ({ ...r, images: [] })));
-        localStorage.setItem(RV_KEY, JSON.stringify(lite));
-      } catch (e) {}
-    }
-
-    // โหลดจากเซิร์ฟเวอร์เบื้องหลัง คืนค่า true ถ้าข้อมูลเปลี่ยน
-    async function fetchReviews(parkId) {
-      const ver = reviewVer;
-      const j = await api("get_reviews", { parkId });
-      const list = j.reviews || [];
-      // ถ้ามีการกดไลก์/คอมเมนต์ระหว่างรอ ให้ทิ้งผลที่อาจเก่ากว่า
-      if (ver !== reviewVer || pendingOps > 0) return false;
-      reviewFetched[parkId] = Date.now();
-      const changed = JSON.stringify(list) !== JSON.stringify(reviewCache[parkId]);
-      reviewCache[parkId] = list;
-      if (changed) persistReviews();
-      return changed;
-    }
-
-    function renderReviews(parkId) {
-      if (!selected || String(selected.id) !== String(parkId)) return;
+    async function loadReviews(parkId) {
       const listEl = $("reviewList");
-      const reviews = reviewCache[parkId];
-      if (!reviews) return;
-
-      // เก็บข้อความที่กำลังพิมพ์/โฟกัส/ตำแหน่งเลื่อน ไว้ก่อนวาดใหม่
-      const drafts = {}; let focusId = null; const scrollTop = listEl.scrollTop;
-      listEl.querySelectorAll('input[id^="commInput_"]').forEach(i => {
-        if (i.value) drafts[i.id] = i.value;
-        if (document.activeElement === i) focusId = i.id;
-      });
-
-      if (reviews.length === 0) {
-        listEl.innerHTML = "<small style='color:var(--muted)'>ยังไม่มีรีวิว มาเป็นคนแรกกัน!</small>";
-        return;
-      }
-      listEl.innerHTML = reviews.map(r => {
+      listEl.innerHTML = "<small style='color:var(--muted)'>กำลังโหลดรีวิว...</small>";
+      try {
+        const j = await api("get_reviews", { parkId });
+        if (!j.reviews || j.reviews.length === 0) {
+          listEl.innerHTML = "<small style='color:var(--muted)'>ยังไม่มีรีวิว มาเป็นคนแรกกัน!</small>";
+          return;
+        }
+        listEl.innerHTML = j.reviews.map(r => {
           let imgHtml = "";
           let firstImg = "";
           if (r.images && r.images.length > 0) {
@@ -596,9 +620,9 @@
           let commentsHtml = "";
           if (r.comments && r.comments.length > 0) {
             commentsHtml = r.comments.map(c => `
-              <div class="comment-item" ${c.pending ? 'style="opacity:.55"' : ''}>
+              <div class="comment-item">
                 <span><b>${esc(c.name)}:</b> ${esc(c.comment)}</span>
-                ${me && !c.pending && (c.uid === me.id || isMyReview) ? `<button class="btn-del-text" onclick="deleteComment('${r.reviewId}', '${c.id}')">ลบ</button>` : ''}
+                ${me && (c.uid === me.id || isMyReview) ? `<button class="btn-del-text" onclick="deleteComment('${r.reviewId}', '${c.id}')">ลบ</button>` : ''}
               </div>
             `).join("");
           } else {
@@ -637,92 +661,47 @@
             </div>
           `;
         }).join("");
-
-      Object.entries(drafts).forEach(([id, v]) => { const el = $(id); if (el) el.value = v; });
-      if (focusId && $(focusId)) $(focusId).focus();
-      listEl.scrollTop = scrollTop;
-    }
-
-    async function loadReviews(parkId) {
-      const listEl = $("reviewList");
-      const cached = reviewCache[parkId];
-      if (cached) renderReviews(parkId);                       // แสดงของเดิมทันที
-      else listEl.innerHTML = "<small style='color:var(--muted)'>กำลังโหลดรีวิว...</small>";
-      try {
-        const changed = await fetchReviews(parkId);            // แล้วอัปเดตเบื้องหลัง
-        if (changed || !cached) renderReviews(parkId);
       } catch (e) {
-        if (!cached) listEl.innerHTML = `<small style='color:#dc2626'>โหลดรีวิวไม่สำเร็จ (${esc(e.message)})</small>`;
+        listEl.innerHTML = `<small style='color:#dc2626'>โหลดรีวิวไม่สำเร็จ (${esc(e.message)})</small>`;
       }
     }
 
-    // อัปเดตหน้าจอทันที แล้วค่อยส่งไปเซิร์ฟเวอร์ ถ้าพลาดจะย้อนกลับ
-    async function optimistic(pid, next, call) {
-      const prev = reviewCache[pid] || [];
-      pendingOps++; reviewVer++;
-      reviewCache[pid] = next(prev);
-      renderReviews(pid);
-      let ok = true;
-      try { await call(); }
-      catch (e) { ok = false; reviewCache[pid] = prev; showToast(e.message); }
-      finally { pendingOps--; reviewVer++; }
-      renderReviews(pid);
-      persistReviews();
-      if (!pendingOps) fetchReviews(pid).then(ch => { if (ch) renderReviews(pid); }).catch(() => {});
-      return ok;
-    }
-    const patchReview = (list, id, fn) => list.map(r => r.reviewId === id ? fn(r) : r);
-
     async function toggleLike(reviewId) {
       if (!me) return showToast("กรุณาเข้าสู่ระบบก่อนกดถูกใจ");
-      if (!selected) return;
-      await optimistic(selected.id, list => patchReview(list, reviewId, r => {
-        const likes = r.likes || [];
-        return { ...r, likes: likes.includes(me.id) ? likes.filter(x => x !== me.id) : [...likes, me.id] };
-      }), () => api("toggle_like", { reviewId }, true));
+      try {
+        await api("toggle_like", { reviewId }, true);
+        if (selected) loadReviews(selected.id);
+      } catch(e) { showToast(e.message); }
     }
 
     async function addComment(reviewId) {
       if (!me) return showToast("กรุณาเข้าสู่ระบบก่อนแสดงความคิดเห็น");
-      if (!selected) return;
       const input = $(`commInput_${reviewId}`);
       const comment = input.value.trim();
       if (!comment) return;
-      input.value = "";
-      const tmp = { id: "tmp_" + Date.now(), uid: me.id, name: me.name, pic: me.pic, comment, ts: new Date().toISOString(), pending: true };
-      const ok = await optimistic(selected.id, list => patchReview(list, reviewId, r => ({ ...r, comments: [...(r.comments || []), tmp] })),
-        () => api("add_comment", { reviewId, comment }, true));
-      if (!ok) { const el = $(`commInput_${reviewId}`); if (el) el.value = comment; }
+      try {
+        await api("add_comment", { reviewId, comment }, true);
+        input.value = "";
+        if (selected) loadReviews(selected.id);
+      } catch(e) { showToast(e.message); }
     }
 
     async function deleteReview(reviewId) {
       if (!confirm("คุณต้องการลบรีวิวนี้ใช่หรือไม่?")) return;
-      if (!selected) return;
-      const ok = await optimistic(selected.id, list => list.filter(r => r.reviewId !== reviewId),
-        () => api("delete_review", { reviewId }, true));
-      if (ok) showToast("ลบรีวิวสำเร็จ");
+      try {
+        await api("delete_review", { reviewId }, true);
+        showToast("ลบรีวิวสำเร็จ");
+        if (selected) loadReviews(selected.id);
+      } catch(e) { showToast(e.message); }
     }
 
     async function deleteComment(reviewId, commentId) {
       if (!confirm("คุณต้องการลบความคิดเห็นนี้ใช่หรือไม่?")) return;
-      if (!selected) return;
-      const ok = await optimistic(selected.id, list => patchReview(list, reviewId, r => ({ ...r, comments: (r.comments || []).filter(c => c.id !== commentId) })),
-        () => api("delete_comment", { reviewId, commentId }, true));
-      if (ok) showToast("ลบความคิดเห็นสำเร็จ");
-    }
-
-    // โหลดรีวิวของอุทยานที่คนเช็กอินเยอะ/ใกล้ตัว ไว้ล่วงหน้า
-    let prefetched = false;
-    function prefetchReviews() {
-      if (prefetched || !parks.length) return;
-      prefetched = true;
-      const count = {};
-      checkins.forEach(c => count[c.parkId] = (count[c.parkId] || 0) + 1);
-      const ids = Object.keys(count).sort((a, b) => count[b] - count[a]).slice(0, 5).map(Number);
-      if (userPos) parks.slice(0, 3).forEach(p => ids.push(p.id));
-      [...new Set(ids)].filter(id => !reviewFetched[id]).forEach((id, i) => {
-        setTimeout(() => { if (!pendingOps) fetchReviews(id).catch(() => {}); }, 800 * (i + 1));
-      });
+      try {
+        await api("delete_comment", { reviewId, commentId }, true);
+        showToast("ลบความคิดเห็นสำเร็จ");
+        if (selected) loadReviews(selected.id);
+      } catch(e) { showToast(e.message); }
     }
 
     function openLightbox(src) {
@@ -893,20 +872,16 @@
     }
 
     function refreshViews() { if (selected) renderWho(selected); renderMe(); renderBoard(); }
-    let loadSeq = 0;
     async function loadCheckins(force = true) {
-      if ((loading && !force) || (!force && Date.now() - lastFetch < 20000)) return;
-      const seq = ++loadSeq;
+      if (loading || (!force && Date.now() - lastFetch < 20000)) return;
       loading = true; refreshViews();
       try {
         const j = await api("list");
-        if (seq !== loadSeq) return;   // มีคำขอใหม่กว่า ทิ้งผลเก่า
         checkins = j.r.map(([uid, parkId, ts, parkName]) => ({ uid, parkId, ts, parkName, name: j.u[uid]?.[0] || "สมาชิก", pic: j.u[uid]?.[1] || "" }));
         lastFetch = Date.now();
         try { localStorage.setItem("pk_checkins", JSON.stringify(checkins)); } catch (e) {}
-        prefetchReviews();
       } catch (e) {}
-      if (seq === loadSeq) { loading = false; refreshViews(); }
+      loading = false; refreshViews();
     }
 
     const dayTH = d => new Date(d).toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" });
@@ -925,32 +900,22 @@
 
     $("checkinButton").addEventListener("click", async () => {
       if (!me) return login();
-      // แสดงผลเช็กอินทันที แล้วค่อยยืนยันกับเซิร์ฟเวอร์
-      const rec = { uid: me.id, parkId: selected.id, ts: new Date().toISOString(), parkName: selected.name, name: me.name, pic: me.pic };
-      checkins.push(rec);
-      renderWho(selected); renderMe(); renderBoard();
+      $("checkinButton").disabled = true;
       try {
         await api("checkin", { parkId: selected.id, parkName: selected.name, lat: userPos?.lat, lng: userPos?.lng, plat: selected.lat, plng: selected.lng }, true);
         showToast("เช็กอินสำเร็จ 🌲");
-        loadCheckins();
-      } catch (e) {
-        checkins = checkins.filter(c => c !== rec);
-        showToast(e.message);
-        if (/เซสชัน/.test(e.message)) { clearSession(); renderMe(); }
-      }
-      if (selected) renderWho(selected); renderMe(); renderBoard();
+        await loadCheckins();
+      } catch (e) { showToast(e.message); if (/เซสชัน/.test(e.message)) { clearSession(); renderMe(); } }
+      renderWho(selected);
     });
 
     async function deleteCheckin(parkId) {
       if (!confirm("คุณต้องการลบประวัติการเช็กอินอุทยานนี้ใช่หรือไม่?")) return;
-      const prev = checkins;
-      checkins = checkins.filter(c => !(me && c.uid === me.id && Number(c.parkId) === Number(parkId)));
-      refreshViews();
       try {
         await api("delete_checkin", { parkId }, true);
         showToast("ลบจุดเช็กอินสำเร็จ");
-        loadCheckins();
-      } catch (e) { checkins = prev; refreshViews(); showToast(e.message); }
+        await loadCheckins();
+      } catch (e) { showToast(e.message); }
     }
 
     function renderMe() {
@@ -1019,7 +984,6 @@
       initLine().then(() => { 
         renderMe(); 
         if (selected) renderWho(selected); 
-        if (selected) renderReviews(selected.id);  // วาดรีวิวใหม่ เมื่อรู้แล้วว่าใครล็อกอินอยู่ (สถานะหัวใจ/ปุ่มลบ)
       });
       
       renderBoard();
@@ -1033,15 +997,6 @@
         }, 400);
       }
     });
-
-    // รีเฟรชข้อมูลเบื้องหลังเป็นระยะ และเมื่อกลับมาเปิดแอป
-    setInterval(() => {
-      if (document.hidden) return;
-      loadCheckins(false);
-      const typing = document.activeElement && document.activeElement.id && document.activeElement.id.startsWith("commInput_") && document.activeElement.value;
-      if (selected && !pendingOps && !typing) fetchReviews(selected.id).then(ch => { if (ch) renderReviews(selected.id); }).catch(() => {});
-    }, 45000);
-    document.addEventListener("visibilitychange", () => { if (!document.hidden) loadCheckins(false); });
   </script>
 </body>
 </html>
