@@ -365,7 +365,6 @@
       strip.classList.add("hidden");
       lucide.createIcons();
 
-      // อัปเดต URL พารามิเตอร์ของเบราว์เซอร์เมื่อเลือกสถานที่
       const url = new URL(window.location);
       url.searchParams.set('park', p.id);
       window.history.replaceState({}, '', url);
@@ -392,7 +391,6 @@
         userMarker = L.marker([userPos.lat, userPos.lng], { icon: L.divIcon({ className: "", html: '<div class="user-marker"></div>', iconSize: [20, 20], iconAnchor: [10, 10] }), zIndexOffset: 1000 }).addTo(map);
         render();
         
-        // ตรวจสอบว่ามีพารามิเตอร์ ?park= ใน URL หรือไม่ ถ้ามีให้เปิดสถานนั้นทันที
         const urlParams = new URLSearchParams(window.location.search);
         const parkParam = urlParams.get('park');
         if (parkParam !== null && parks[Number(parkParam)]) {
@@ -539,11 +537,10 @@
           `;
         }).join("");
       } catch (e) {
-        listEl.innerHTML = "<small style='color:var(--muted)'>โหลดรีวิวไม่สำเร็จ</small>";
+        listEl.innerHTML = `<small style='color:#dc2626'>โหลดรีวิวไม่สำเร็จ (${esc(e.message)})</small>`;
       }
     }
 
-    // ฟังก์ชันแชร์รีวิว พร้อมลิงก์ตรงไปยังสถานที่
     function shareReview(name, rating, comment, parkName, parkId) {
       const baseUrl = window.location.origin + window.location.pathname;
       const shareUrl = `${baseUrl}?park=${parkId}`;
@@ -645,7 +642,6 @@
     const saveSession = v => { try { localStorage.setItem(SKEY, JSON.stringify(v)); } catch (e) {} };
     const clearSession = () => { try { localStorage.removeItem(SKEY); } catch (e) {} me = null; };
     
-    // ระบบล็อกอิน LINE ครั้งเดียวจบ ไม่หลุดเซสชัน
     async function initLine() {
       try { 
         const sv = JSON.parse(localStorage.getItem(SKEY)); 
@@ -657,7 +653,6 @@
       try {
         await liff.init({ liffId: CONFIG.LIFF_ID });
         if (liff.isLoggedIn()) {
-          // ถ้ายังไม่มี token ในเครื่อง หรือต้องการยืนยันตัวตนอัตโนมัติ
           const idToken = liff.getIDToken();
           if (idToken) {
             const j = await api("login", { idToken: idToken });
@@ -796,7 +791,6 @@
       renderBoard();
       loadCheckins();
 
-      // ตรวจสอบลิงก์แชร์ที่มีพารามิเตอร์ ?park= เมื่อโหลดเว็บ
       const urlParams = new URLSearchParams(window.location.search);
       const parkParam = urlParams.get('park');
       if (parkParam !== null && parks[Number(parkParam)]) {
