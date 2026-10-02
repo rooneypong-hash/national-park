@@ -124,7 +124,6 @@
     
     .btn-del-text { background: none; border: none; color: #dc2626; font-size: 11px; cursor: pointer; padding: 2px 6px; font-weight: 700; }
 
-    /* Progress bar อัปโหลดรูป */
     .progress-box { display: none; margin-top: 12px; }
     .progress-box.show { display: block; }
     .progress-bar-bg { width: 100%; height: 10px; background: #e7ece7; border-radius: 99px; overflow: hidden; margin-top: 6px; }
@@ -485,7 +484,7 @@
 
     // ฟังก์ชันย่อรูปอัตโนมัติ (ด้านยาวไม่เกิน 2048 px)
     $("reviewFileinput").addEventListener("change", async (e) => {
-      const files = Array.from(e.target.files).slice(0, 5); // รองรับสูงสุด 5 รูป
+      const files = Array.from(e.target.files).slice(0, 5);
       reviewImagesBase64 = [];
       const container = $("imagePreviewContainer");
       container.innerHTML = "";
@@ -574,7 +573,7 @@
           $("reviewFileinput").value = "";
           progressBox.classList.remove("show");
           fill.style.width = "0%";
-          $("reviewModal").classList.remove("show"); // ปิดหน้าต่างรีวิวทันที
+          $("reviewModal").classList.remove("show"); // ปิดหน้าต่างทันที
           submitBtn.disabled = false;
           cancelBtn.disabled = false;
           loadReviews(selected.id);
