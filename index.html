@@ -126,6 +126,9 @@
     
     .btn-del-text { background: none; border: none; color: #dc2626; font-size: 11px; cursor: pointer; padding: 2px 6px; font-weight: 700; }
 
+    .thumb { position: relative; width: 72px; height: 72px; overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: #f3f6f3; }
+    .thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+    .thumb button { position: absolute; top: 3px; right: 3px; width: 22px; height: 22px; padding: 0; color: #fff; font-size: 15px; line-height: 22px; text-align: center; background: rgba(0,0,0,.65); border: 0; border-radius: 50%; cursor: pointer; }
     .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 3000; display: none; align-items: center; justify-content: center; padding: 16px; }
     .modal-overlay.show { display: flex; }
     .modal-box { background: #fff; width: 100%; max-width: 400px; max-height: 90vh; overflow-y: auto; padding: 20px; border-radius: 24px; box-shadow: var(--shadow); }
@@ -262,13 +265,29 @@
         <div style="margin-bottom: 14px;">
           <label style="font-size: 13px; font-weight: 700; color: var(--muted); display: block; margin-bottom: 6px;">แนบรูปภาพประกอบ (สูงสุด 6 รูป)</label>
           <input type="file" id="reviewFileinput" accept="image/*" multiple style="width: 100%; font-size: 12px; padding: 6px; background: #f3f6f3; border-radius: 8px; border: 1px solid var(--border);" />
+          <div id="compressStatus" style="font-size:12px; color:var(--muted); margin-top:6px;">ย่อและบีบเป็น WebP อัตโนมัติ (ด้านยาวไม่เกิน 2048 px)</div>
           <div id="imagePreviewContainer" style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;"></div>
+        </div>
+
+        <div id="uploadProg" style="display:none; margin-bottom:14px;">
+          <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:700;"><span id="upText">กำลังอัปโหลด…</span><span id="upPct">0%</span></div>
+          <div class="bar"><div id="upBar" style="width:0%; transition:width .2s;"></div></div>
         </div>
 
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
           <button class="large-button" id="cancelReview">ยกเลิก</button>
           <button class="large-button primary" id="submitReview">บันทึกรีวิว</button>
         </div>
+      </div>
+    </div>
+
+    <!-- Popup อัปโหลดเรียบร้อย -->
+    <div class="modal-overlay" id="doneModal" style="z-index: 3500;">
+      <div class="modal-box" style="text-align:center;">
+        <div style="font-size:56px; line-height:1.2;">✅</div>
+        <h3 style="margin:6px 0;">บันทึกเรียบร้อย</h3>
+        <p style="margin:0 0 16px; color:var(--muted); font-size:14px;">อัปโหลดรูปและรีวิวของคุณแล้ว</p>
+        <button class="large-button primary" id="doneOk" style="width:100%;">ตกลง</button>
       </div>
     </div>
 
@@ -446,19 +465,93 @@
     $("locateButton").addEventListener("click", () => locate(false));
 
     let currentRating = 5;
-    let reviewImagesBase64 = [];
+    const MAX_IMG = 6;
+    const IMG_HINT = "ย่อและบีบเป็น WebP อัตโนมัติ (ด้านยาวไม่เกิน 2048 px)";
+    let reviewItems = [];        // [{ blob, url, w, h }] รูปที่ย่อแล้ว
+    let uploading = false, adding = false;
+
+    function renderThumbs(note) {
+      const box = $("imagePreviewContainer");
+      box.innerHTML = "";
+      reviewItems.forEach(it => {
+        const d = document.createElement("div");
+        d.className = "thumb";
+        d.innerHTML = `<img src="${it.url}" alt="" title="${it.w}x${it.h}px · ${Math.round(it.blob.size / 1024)} KB"><button type="button" aria-label="ลบรูปนี้">×</button>`;
+        d.querySelector("button").onclick = () => {
+          if (uploading || adding) return;
+          URL.revokeObjectURL(it.url);
+          reviewItems = reviewItems.filter(x => x !== it);
+          renderThumbs();
+        };
+        box.appendChild(d);
+      });
+      $("compressStatus").textContent = note || (reviewItems.length ? `แนบแล้ว ${reviewItems.length}/${MAX_IMG} รูป · กด × เพื่อลบ` : IMG_HINT);
+    }
+
+    function resetReviewForm() {
+      $("reviewComment").value = "";
+      reviewItems.forEach(it => URL.revokeObjectURL(it.url));
+      reviewItems = [];
+      renderThumbs();
+      $("reviewFileinput").value = "";
+      $("uploadProg").style.display = "none";
+      setBar(0);
+      setUpText("");
+    }
+
+    // ---------- แถบความคืบหน้า (วิ่งขึ้นทีละนิด) ----------
+    const prog = { shown: 0, target: 0, cap: 0, timer: null };
+    function setBar(p) {
+      $("upBar").style.width = p + "%";
+      $("upPct").textContent = Math.floor(p) + "%";
+    }
+    function setUpText(text, isErr) {
+      $("uploadProg").style.display = "block";
+      const t = $("upText"); t.textContent = text || ""; t.style.color = isErr ? "#e5484d" : "";
+      $("upBar").style.background = isErr ? "#e5484d" : "";
+    }
+    function progStart() {
+      clearInterval(prog.timer);
+      prog.shown = prog.target = prog.cap = 0;
+      setBar(0);
+      prog.timer = setInterval(() => {
+        if (prog.target < prog.cap) prog.target += (prog.cap - prog.target) * 0.02;   // ระหว่างรอเซิร์ฟเวอร์ ค่อย ๆ ขยับ ไม่ค้าง
+        const d = prog.target - prog.shown;
+        if (d > 0) prog.shown = Math.min(prog.target, prog.shown + Math.max(0.35, d * 0.1));
+        setBar(prog.shown);
+      }, 40);
+    }
+    const progTo = t => { prog.target = Math.max(prog.target, t); prog.cap = Math.max(prog.cap, prog.target); };
+    const progCap = c => { prog.cap = Math.max(prog.cap, c); };
+    function progStop() { clearInterval(prog.timer); }
+    function progFinish() {          // วิ่งถึง 100% ให้เห็นจริงก่อนไปต่อ
+      prog.target = prog.cap = 100;
+      return new Promise(res => {
+        const w = setInterval(() => { if (prog.shown >= 99.9) { clearInterval(w); progStop(); setBar(100); res(); } }, 40);
+      });
+    }
+
+    function setBusy(b) {
+      $("submitReview").disabled = b; $("cancelReview").disabled = b; $("reviewFileinput").disabled = b;
+      $("submitReview").textContent = b ? "กำลังอัปโหลด…" : "บันทึกรีวิว";
+    }
+    function showDone() {
+      $("doneModal").classList.add("show");
+      clearTimeout(showDone.t);
+      showDone.t = setTimeout(() => $("doneModal").classList.remove("show"), 2500);
+    }
+    $("doneOk").addEventListener("click", () => $("doneModal").classList.remove("show"));
 
     $("reviewBtn").addEventListener("click", () => {
       if (!me) return showToast("กรุณาเข้าสู่ระบบก่อนรีวิว");
       $("reviewModal").classList.add("show");
     });
     $("cancelReview").addEventListener("click", () => {
+      if (uploading) return;
       $("reviewModal").classList.remove("show");
-      reviewImagesBase64 = [];
-      $("imagePreviewContainer").innerHTML = "";
-      $("reviewFileinput").value = "";
+      resetReviewForm();
     });
-    
+
     document.querySelectorAll("#starSelect span").forEach(star => {
       star.addEventListener("click", (e) => {
         currentRating = Number(e.target.dataset.v);
@@ -468,60 +561,119 @@
       });
     });
 
+    // เลือกรูป → ย่อ + บีบเป็น WebP อัตโนมัติ → แสดงภาพเล็ก มีปุ่ม × ลบ (เพิ่มได้ต่อเนื่องรวมไม่เกิน 6 รูป)
     $("reviewFileinput").addEventListener("change", async (e) => {
-      const files = Array.from(e.target.files).slice(0, 6);
-      reviewImagesBase64 = [];
-      const container = $("imagePreviewContainer");
-      container.innerHTML = "";
-
-      for (let file of files) {
-        const base64 = await compressImage(file, 800, 0.75);
-        reviewImagesBase64.push(base64);
-        const img = document.createElement("div");
-        img.className = "ig-img-wrap";
-        img.innerHTML = `<img src="${base64}">`;
-        container.appendChild(img);
+      const files = Array.from(e.target.files);
+      e.target.value = "";
+      if (!files.length || adding || uploading) return;
+      adding = true; $("submitReview").disabled = true;
+      const room = MAX_IMG - reviewItems.length;
+      let note = files.length > room ? `แนบได้สูงสุด ${MAX_IMG} รูป — เลือกเพิ่มเฉพาะ ${room} รูปแรก` : "";
+      const pick = files.slice(0, Math.max(0, room));
+      for (let i = 0; i < pick.length; i++) {
+        $("compressStatus").textContent = `กำลังย่อรูป ${i + 1}/${pick.length}…`;
+        try {
+          const r = await compressImage(pick[i]);
+          reviewItems.push({ ...r, url: URL.createObjectURL(r.blob) });
+          renderThumbs($("compressStatus").textContent);
+        } catch (err) { note = err.message; }
       }
+      adding = false; $("submitReview").disabled = false;
+      renderThumbs(note);
     });
 
-    function compressImage(file, maxWidth, quality) {
-      return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = (event) => {
-          const img = new Image();
-          img.src = event.target.result;
-          img.onload = () => {
-            const canvas = document.createElement("canvas");
-            let width = img.width;
-            let height = img.height;
-            if (width > maxWidth) {
-              height = Math.round((height * maxWidth) / width);
-              width = maxWidth;
-            }
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext("2d");
-            ctx.drawImage(img, 0, 0, width, height);
-            resolve(canvas.toDataURL("image/jpeg", quality));
-          };
+    function loadImage(file) {
+      return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(file), img = new Image();
+        img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+        img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("อ่านรูปไม่ได้: " + file.name)); };
+        img.src = url;
+      });
+    }
+    const canvasBlob = (c, type, q) => new Promise(res => c.toBlob(res, type, q));
+    async function compressImage(file, maxSide = 2048) {
+      const img = await loadImage(file);
+      const k = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));   // ไม่ขยายรูปเล็ก
+      const w = Math.round(img.naturalWidth * k), h = Math.round(img.naturalHeight * k);
+      const c = document.createElement("canvas");
+      c.width = w; c.height = h;
+      const ctx = c.getContext("2d");
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0, w, h);
+      let blob = await canvasBlob(c, "image/webp", 0.82);
+      if (!blob || blob.type !== "image/webp") blob = await canvasBlob(c, "image/jpeg", 0.85);   // เบราว์เซอร์ที่บีบ WebP ไม่ได้ (เช่น Safari) → JPEG
+      if (!blob) throw new Error("ย่อรูปไม่สำเร็จ");
+      return { blob, w, h };
+    }
+
+    function blobToBase64(blob) {
+      return new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result).split(",")[1]);
+        r.onerror = () => reject(new Error("อ่านไฟล์รูปไม่ได้"));
+        r.readAsDataURL(blob);
+      });
+    }
+    // ส่งด้วย XHR เพื่ออ่านความคืบหน้าการอัปโหลดจริง
+    function xhrApi(bodyStr, onProgress) {
+      return new Promise((resolve, reject) => {
+        const x = new XMLHttpRequest();
+        x.open("POST", CONFIG.API_URL);
+        x.timeout = 180000;
+        x.upload.onprogress = ev => { if (ev.lengthComputable) onProgress(ev.loaded, ev.total); };
+        x.onload = () => {
+          try { const j = JSON.parse(x.responseText); j.error ? reject(new Error(j.error === "bad action" ? "เซิร์ฟเวอร์ยังไม่รองรับอัปโหลดรูป — ต้องอัปเดต Code.gs แล้ว Deploy เวอร์ชันใหม่" : j.error)) : resolve(j); }
+          catch (e) { reject(new Error("เซิร์ฟเวอร์ตอบกลับไม่ถูกต้อง")); }
         };
+        x.onerror = () => reject(new Error("เครือข่ายขัดข้อง อัปโหลดไม่สำเร็จ"));
+        x.ontimeout = () => reject(new Error("อัปโหลดนานเกินไป กรุณาลองใหม่"));
+        x.send(bodyStr);
       });
     }
 
     $("submitReview").addEventListener("click", async () => {
+      if (uploading || adding) return;
       const comment = $("reviewComment").value.trim();
-      if (!comment) return showToast("กรุณาใส่ข้อความรีวิว");
+      if (!comment) return setUpText("กรุณาใส่ข้อความรีวิว", true);
+      if (!CONFIG.API_URL) return setUpText("ยังไม่ได้ตั้งค่า API_URL", true);
+      const pid = selected.id, rating = currentRating, items = reviewItems.slice(), n = items.length;
+      uploading = true; setBusy(true); progStart(); setUpText("กำลังเตรียมข้อมูล…");
       try {
-        await api("add_review", { parkId: selected.id, rating: currentRating, comment, images: reviewImagesBase64 }, true);
-        showToast("บันทึกรีวิวสำเร็จ ⭐");
-        $("reviewComment").value = "";
-        reviewImagesBase64 = [];
-        $("imagePreviewContainer").innerHTML = "";
-        $("reviewFileinput").value = "";
+        // 1) เตรียมรูป (0–5%)
+        const bodies = [];
+        for (let i = 0; i < n; i++) {
+          setUpText(`กำลังเตรียมรูป ${i + 1}/${n}…`);
+          bodies.push(JSON.stringify({ action: "upload_image", token: me && me.token, parkId: pid, mime: items[i].blob.type, data: await blobToBase64(items[i].blob) }));
+          progTo((i + 1) / n * 5);
+        }
+        // 2) อัปโหลดรูปทีละรูปไป Google Drive (5–90% แบ่งตามขนาดไฟล์)
+        const total = bodies.reduce((a, b) => a + b.length, 0) || 1;
+        let base = 5; const urls = [];
+        for (let i = 0; i < n; i++) {
+          const slot = bodies[i].length / total * 85, start = base;
+          setUpText(`กำลังอัปโหลดรูป ${i + 1}/${n}`);
+          const j = await xhrApi(bodies[i], (l, t) => {
+            progTo(start + slot * 0.7 * (l / t));
+            if (l >= t) { setUpText(`กำลังบันทึกรูป ${i + 1}/${n} ลง Drive…`); progCap(start + slot * 0.97); }
+          });
+          urls.push(j.url); base = start + slot; progTo(base);
+        }
+        // 3) บันทึกรีวิว (90–98%)
+        setUpText("กำลังบันทึกรีวิว…");
+        progTo(90); progCap(98);
+        await api("add_review", { parkId: pid, rating, comment, images: urls }, true);
+        // 4) วิ่งถึง 100% → ปิดหน้ารีวิวทันที → popup บันทึกเรียบร้อย
+        setUpText("เสร็จสิ้น");
+        await progFinish();
         $("reviewModal").classList.remove("show");
-        loadReviews(selected.id);
-      } catch (e) { showToast(e.message); }
+        resetReviewForm();
+        showDone();
+        loadReviews(pid);
+      } catch (e) {
+        progStop();
+        setUpText(e.message, true);
+        if (/เซสชัน/.test(e.message)) { clearSession(); renderMe(); }
+      } finally { uploading = false; setBusy(false); }
     });
 
     // ================= Reviews: cache + preload + optimistic UI =================
@@ -747,13 +899,15 @@
 
       try {
         if (encodedImg && navigator.canShare) {
-          const imgUrl = decodeURIComponent(encodedImg);
-          const res = await fetch(imgUrl);
-          const blob = await res.blob();
-          const file = new File([blob], "review.jpg", { type: "image/jpeg" });
-          if (navigator.canShare({ files: [file] })) {
-            shareData.files = [file];
-          }
+          try {
+            const imgUrl = decodeURIComponent(encodedImg);
+            const res = await fetch(imgUrl);
+            const blob = await res.blob();
+            const file = new File([blob], "review.jpg", { type: "image/jpeg" });
+            if (navigator.canShare({ files: [file] })) {
+              shareData.files = [file];
+            }
+          } catch (imgErr) { /* โหลดรูปไม่ได้ (CORS) — แชร์แบบข้อความต่อ */ }
         }
 
         if (navigator.share) {
