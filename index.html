@@ -453,6 +453,17 @@
       );
     }
 
+    // อุทยานที่ "ฉัน" เคยเช็กอินแล้ว (ไว้กรองออกจากแถบแนะนำ)
+    function myCheckedInSet() {
+      if (!me) return new Set();
+      return new Set(checkins.filter(c => c.uid === me.id).map(c => Number(c.parkId)));
+    }
+    // อุทยานที่ใกล้สุดที่ยังไม่เคยเช็กอิน (parks ถูก sort ตามระยะทางไว้แล้วใน render())
+    function nearestUnvisited() {
+      const done = myCheckedInSet();
+      return parks.find(p => !done.has(p.id)) || null;
+    }
+
     function render() {
       if (userPos) parks.forEach(p => p.dist = haversine(userPos.lat, userPos.lng, p.lat, p.lng));
       parks.sort((a, b) => userPos ? a.dist - b.dist : a.name.localeCompare(b.name, "th"));
@@ -467,11 +478,15 @@
         markers.set(p, m);
       });
 
+      // แถบแนะนำ: ไม่โชว์ที่เคยเช็กอินแล้ว เอาที่ใกล้สุดที่ยังไม่เช็กอินขึ้นแนะนำแทน
+      const done = myCheckedInSet();
+      const stripList = list.filter(p => !done.has(p.id));
+
       strip.innerHTML = "";
-      list.slice(0, 12).forEach((p, i) => {
+      stripList.slice(0, 12).forEach((p, i) => {
         const b = document.createElement("button");
         b.className = "strip-item";
-        b.innerHTML = `<b>${i === 0 && userPos ? '<span class="rank">ใกล้สุด</span>' : ""}${p.name}</b><small>${userPos ? fmtKm(p.dist) + " · ขับประมาณ " + fmtDrive(p.dist) : "แตะเพื่อดูรายละเอียด"}</small>`;
+        b.innerHTML = `<b>${i === 0 && userPos ? '<span class="rank">ใกล้สุดที่ยังไม่เช็กอิน</span>' : ""}${p.name}</b><small>${userPos ? fmtKm(p.dist) + " · ขับประมาณ " + fmtDrive(p.dist) : "แตะเพื่อดูรายละเอียด"}</small>`;
         b.onclick = () => selectPark(p);
         strip.appendChild(b);
       });
@@ -488,7 +503,7 @@
       $("placeCoord").textContent = `${p.lat.toFixed(3)}, ${p.lng.toFixed(3)}`;
       renderWho(p);
       loadReviews(p.id);
-      $("nearestTag").classList.toggle("hidden", !(userPos && parks[0] === p));
+      $("nearestTag").classList.toggle("hidden", !(userPos && nearestUnvisited() === p));
       detailCard.classList.add("open");
       strip.classList.add("hidden");
       lucide.createIcons();
@@ -521,7 +536,7 @@
         render();
         if (parks.length && firstAutoSelect && !new URLSearchParams(window.location.search).has('park')) {
           firstAutoSelect = false;
-          selectPark(parks[0], true);
+          selectPark(nearestUnvisited() || parks[0], true);
         }
       }, () => {
         showToast("กรุณาอนุญาตการเข้าถึงตำแหน่ง");
@@ -1094,6 +1109,10 @@
         if (sv && sv.token) me = sv; 
       } catch (e) {}
 
+      // มีเซสชันที่เคยล็อกอินไว้แล้ว ใช้เลย ไม่ต้องเช็ก/ล็อกอินกับ LINE ซ้ำทุกครั้งที่เปิดลิงก์เข้ามา
+      // (ถ้าเซสชันหมดอายุจริงๆ ฝั่ง action ที่ต้องล็อกอินจะแจ้ง error แล้วเคลียร์เซสชันให้ล็อกอินใหม่เองตามปกติ)
+      if (me) return;
+
       if (!CONFIG.LIFF_ID || !window.liff) return;
       
       try {
@@ -1119,7 +1138,18 @@
       }
     }
 
-    function refreshViews() { if (selected) { renderWho(selected); renderDetailMeta(); } renderMe(); renderBoard(); }
+    // สลับไปหน้าแผนที่แล้วเปิดการ์ดอุทยานนั้นให้เลย (ใช้จากรายการ "อุทยานที่ไปมาแล้ว" และหน้า Leader)
+    function goToPark(id) {
+      const p = parks[id];
+      if (!p) return;
+      document.querySelectorAll(".nav-item").forEach(x => x.classList.toggle("active", x.dataset.tab === "map"));
+      $("pageMe").classList.remove("show");
+      $("pageBoard").classList.remove("show");
+      render();
+      setTimeout(() => { map.invalidateSize(); selectPark(p, true); }, 60);
+    }
+
+    function refreshViews() { render(); if (selected) { renderWho(selected); renderDetailMeta(); } renderMe(); renderBoard(); }
     let loadSeq = 0;
     async function loadCheckins(force = true) {
       if ((loading && !force) || (!force && Date.now() - lastFetch < 20000)) return;
@@ -1199,7 +1229,7 @@
       if (list.length > 0) {
         listHtml = list.map(([id, o]) => {
           const displayName = o.parkName || parks[id]?.name || "อุทยานแห่งชาติ";
-          return '<div class="row"><span class="grow">' + esc(displayName) + '</span><small>' + fmtDate(o.last) + '</small><button class="btn-delete-sm" onclick="deleteCheckin(' + id + ')">ลบ</button></div>';
+          return '<div class="row" style="cursor:pointer" onclick="goToPark(' + id + ')"><span class="grow">' + esc(displayName) + '</span><small>' + fmtDate(o.last) + '</small><button class="btn-delete-sm" onclick="event.stopPropagation();deleteCheckin(' + id + ')">ลบ</button></div>';
         }).join("");
       } else {
         listHtml = '<p style="color:var(--muted)">' + (loading ? "กำลังโหลด…" : "ยังไม่เคยเช็กอิน") + '</p>';
@@ -1210,14 +1240,16 @@
         '<div class="facts"><div class="fact"><strong>' + per.size + '</strong><span>อุทยานที่เคยไป</span></div><div class="fact"><strong>' + mine.length + '</strong><span>เช็กอินทั้งหมด</span></div><div class="fact"><strong>' + pct + '%</strong><span>จาก ' + parks.length + ' แห่ง</span></div></div>' +
         '<div class="bar"><div style="width:' + pct + '%"></div></div></div>' +
         '<div class="card"><b>อุทยานที่ไปมาแล้ว</b>' + listHtml + '</div>' +
-        '<button class="large-button" style="width:100%;margin-bottom:10px" id="copyBtn">คัดลอกรหัสเข้าสู่ระบบ</button>' +
         '<button class="large-button" style="width:100%" id="logoutBtn">ออกจากระบบ</button>';
       
-      $("copyBtn").onclick = async () => { try { await navigator.clipboard.writeText(me.token); showToast("คัดลอกรหัสแล้ว"); } catch (e) {} };
       $("logoutBtn").onclick = () => { clearSession(); try { if (window.liff && liff.isLoggedIn()) liff.logout(); } catch (e) {} location.reload(); };
     }
 
+    let boardUid = null;   // uid ที่กำลังเปิดดูรายละเอียดอยู่ในหน้า Leader (null = หน้าอันดับรวม)
+
     function renderBoard() {
+      if (boardUid) { renderFriendBoard(boardUid); return; }
+
       const m = new Map();
       checkins.forEach(c => { const u = m.get(c.uid) || { uid: c.uid, name: c.name, pic: c.pic, total: 0, set: new Set() }; u.total++; u.set.add(Number(c.parkId)); u.name = c.name; u.pic = c.pic; m.set(c.uid, u); });
       const key = u => boardMode === "total" ? u.total : u.set.size;
@@ -1225,8 +1257,31 @@
       const medals = ["🥇", "🥈", "🥉"];
       $("pageBoard").innerHTML = `<h2>Leader</h2>
         <div class="filters"><button class="filter-chip ${boardMode === "total" ? "active" : ""}" data-m="total">เช็กอินมากสุด</button><button class="filter-chip ${boardMode === "parks" ? "active" : ""}" data-m="parks">ไปหลายอุทยานสุด</button></div>
-        <div class="card">${rank.length ? rank.map((u, i) => `<div class="row ${me && u.uid === me.id ? "me" : ""}"><span class="medal">${medals[i] || i + 1}</span>${avatar(u)}<span class="grow">${esc(u.name)}</span><small>${u.total} ครั้ง · ${u.set.size} แห่ง</small></div>`).join("") : `<p style="color:var(--muted)">${loading ? "กำลังโหลด…" : "ยังไม่มีข้อมูลเช็กอิน"}</p>`}</div>`;
+        <div class="card">${rank.length ? rank.map((u, i) => `<div class="row ${me && u.uid === me.id ? "me" : ""}" style="cursor:pointer" data-uid="${esc(u.uid)}"><span class="medal">${medals[i] || i + 1}</span>${avatar(u)}<span class="grow">${esc(u.name)}</span><small>${u.total} ครั้ง · ${u.set.size} แห่ง</small></div>`).join("") : `<p style="color:var(--muted)">${loading ? "กำลังโหลด…" : "ยังไม่มีข้อมูลเช็กอิน"}</p>`}</div>`;
       document.querySelectorAll("#pageBoard .filter-chip").forEach(b => b.onclick = () => { boardMode = b.dataset.m; renderBoard(); });
+      document.querySelectorAll("#pageBoard .row[data-uid]").forEach(row => row.onclick = () => { boardUid = row.dataset.uid; renderBoard(); });
+    }
+
+    // รายละเอียดสถานที่ของเพื่อนคนหนึ่งในหน้า Leader — กดชื่อสถานที่เพื่อวิ่งไปดูในแผนที่ได้เลย
+    function renderFriendBoard(uid) {
+      const mine = checkins.filter(c => c.uid === uid);
+      if (!mine.length) { boardUid = null; renderBoard(); return; }
+      const u0 = mine[0];
+      const per = new Map();
+      mine.forEach(c => { const o = per.get(Number(c.parkId)) || { n: 0, last: c.ts, parkName: c.parkName }; o.n++; if (c.ts > o.last) o.last = c.ts; per.set(Number(c.parkId), o); });
+      const list = [...per.entries()].sort((a, b) => b[1].last.localeCompare(a[1].last));
+      const listHtml = list.map(([id, o]) => {
+        const displayName = o.parkName || parks[id]?.name || "อุทยานแห่งชาติ";
+        return `<div class="row" style="cursor:pointer" onclick="goToPark(${id})"><span class="grow">${esc(displayName)}</span><small>${fmtDate(o.last)}</small></div>`;
+      }).join("");
+      $("pageBoard").innerHTML = `<h2 style="display:flex;align-items:center;gap:10px">
+          <button class="close-button" id="backBoardBtn" style="width:34px;height:34px"><i data-lucide="arrow-left"></i></button>
+          สถานที่ของ ${esc(u0.name)}
+        </h2>
+        <div class="card"><div class="profile">${avatar(u0, "lg")}<div><b style="font-size:18px">${esc(u0.name)}</b><br><small style="color:var(--muted)">เช็กอินไปแล้ว ${per.size} อุทยาน · ${mine.length} ครั้ง</small></div></div></div>
+        <div class="card"><b>อุทยานที่เช็กอินแล้ว</b>${listHtml}</div>`;
+      $("backBoardBtn").onclick = () => { boardUid = null; renderBoard(); };
+      lucide.createIcons();
     }
 
     document.querySelectorAll(".nav-item").forEach(b => b.addEventListener("click", () => {
