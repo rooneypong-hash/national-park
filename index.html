@@ -429,6 +429,12 @@
       parks = EMBEDDED.map((p, i) => ({ ...p, id: i }));
     }
 
+    // parks ถูก sort ตามระยะทางใหม่ทุกครั้งที่ render() ลำดับในอาเรย์เลยไม่คงที่
+    // ต้องหาอุทยานด้วย .id (คงที่ตลอด ไม่เปลี่ยนตามลำดับ) ห้ามใช้ parks[id] อ้างตำแหน่งเด็ดขาด
+    function parkById(id) {
+      return parks.find(p => p.id === Number(id));
+    }
+
     function haversine(lat1, lng1, lat2, lng2) {
       const R = 6371, rad = Math.PI / 180;
       const dLat = (lat2 - lat1) * rad, dLng = (lng2 - lng1) * rad;
@@ -1140,7 +1146,7 @@
 
     // สลับไปหน้าแผนที่แล้วเปิดการ์ดอุทยานนั้นให้เลย (ใช้จากรายการ "อุทยานที่ไปมาแล้ว" และหน้า Leader)
     function goToPark(id) {
-      const p = parks[id];
+      const p = parkById(id);
       if (!p) return;
       document.querySelectorAll(".nav-item").forEach(x => x.classList.toggle("active", x.dataset.tab === "map"));
       $("pageMe").classList.remove("show");
@@ -1228,7 +1234,7 @@
       let listHtml = "";
       if (list.length > 0) {
         listHtml = list.map(([id, o]) => {
-          const displayName = o.parkName || parks[id]?.name || "อุทยานแห่งชาติ";
+          const displayName = o.parkName || parkById(id)?.name || "อุทยานแห่งชาติ";
           return '<div class="row" style="cursor:pointer" onclick="goToPark(' + id + ')"><span class="grow">' + esc(displayName) + '</span><small>' + fmtDate(o.last) + '</small><button class="btn-delete-sm" onclick="event.stopPropagation();deleteCheckin(' + id + ')">ลบ</button></div>';
         }).join("");
       } else {
@@ -1271,7 +1277,7 @@
       mine.forEach(c => { const o = per.get(Number(c.parkId)) || { n: 0, last: c.ts, parkName: c.parkName }; o.n++; if (c.ts > o.last) o.last = c.ts; per.set(Number(c.parkId), o); });
       const list = [...per.entries()].sort((a, b) => b[1].last.localeCompare(a[1].last));
       const listHtml = list.map(([id, o]) => {
-        const displayName = o.parkName || parks[id]?.name || "อุทยานแห่งชาติ";
+        const displayName = o.parkName || parkById(id)?.name || "อุทยานแห่งชาติ";
         return `<div class="row" style="cursor:pointer" onclick="goToPark(${id})"><span class="grow">${esc(displayName)}</span><small>${fmtDate(o.last)}</small></div>`;
       }).join("");
       $("pageBoard").innerHTML = `<h2 style="display:flex;align-items:center;gap:10px">
@@ -1453,9 +1459,9 @@
 
       const urlParams = new URLSearchParams(window.location.search);
       const parkParam = urlParams.get('park');
-      if (parkParam !== null && parks[Number(parkParam)]) {
+      if (parkParam !== null && parkById(Number(parkParam))) {
         setTimeout(() => {
-          selectPark(parks[Number(parkParam)], true);
+          selectPark(parkById(Number(parkParam)), true);
         }, 400);
       }
     });
