@@ -145,6 +145,16 @@
     .dp-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; font-size: 14px; border-bottom: 1px solid #eef2ee; }
     .dp-row:last-child { border: 0; }
     .dp-row > span:first-child { color: var(--muted); flex: 0 0 auto; }
+    .dp-gallery { margin-bottom: 12px; }
+    .dp-main { position: relative; width: 100%; aspect-ratio: 16/10; overflow: hidden; background: #dfe5e0; border-radius: 20px; }
+    .dp-main img { display: block; width: 100%; height: 100%; object-fit: cover; cursor: zoom-in; }
+    .dp-ph { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; color: var(--muted); font-size: 13px; font-weight: 600; text-align: center; }
+    .dp-credit { margin-top: 6px; font-size: 11px; color: var(--muted); }
+    .dp-credit a, #dpAboutSrc a { color: #28772d; }
+    .dp-thumbs { display: flex; gap: 8px; margin-top: 8px; }
+    .dp-th { flex: 1; max-width: 96px; aspect-ratio: 4/3; padding: 0; overflow: hidden; background: #dfe5e0; border: 2px solid transparent; border-radius: 12px; cursor: pointer; }
+    .dp-th.on { border-color: var(--primary); }
+    .dp-th img { display: block; width: 100%; height: 100%; object-fit: cover; }
     .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 3000; display: none; align-items: center; justify-content: center; padding: 16px; }
     .modal-overlay.show { display: flex; }
     .modal-box { background: #fff; width: 100%; max-width: 400px; max-height: 90vh; overflow-y: auto; padding: 20px; border-radius: 24px; box-shadow: var(--shadow); }
@@ -265,6 +275,11 @@
     <section class="detail-page" id="detailPage">
       <div class="dp-bar"><button class="close-button" id="dpBack" aria-label="กลับ"><i data-lucide="arrow-left"></i></button><b>รายละเอียดอุทยาน</b></div>
       <div class="dp-body" id="dpBody">
+        <div class="dp-gallery">
+          <div class="dp-main"><img id="dpMainImg" alt="" style="display:none"><div id="dpPh" class="dp-ph">กำลังโหลดรูป…</div></div>
+          <div class="dp-credit" id="dpCredit"></div>
+          <div class="dp-thumbs" id="dpThumbs"></div>
+        </div>
         <div class="dp-head">
           <div class="place-icon"><i data-lucide="trees"></i></div>
           <div class="place-heading"><h2 id="dpName">-</h2><p id="dpSub" style="display:block"></p></div>
@@ -276,6 +291,13 @@
           <button id="dpSave"><i data-lucide="bookmark"></i><span id="dpSaveLbl">บันทึกไว้</span></button>
           <button id="dpShare"><i data-lucide="share-2"></i>แชร์</button>
           <button id="dpNav"><i data-lucide="navigation"></i>นำทาง</button>
+        </div>
+
+        <div class="card" id="dpAboutCard">
+          <div style="font-weight:800; margin-bottom:6px;">เกี่ยวกับอุทยาน</div>
+          <div id="dpPlace" style="font-size:14px; font-weight:700; margin-bottom:6px;"></div>
+          <p id="dpAbout" style="margin:0; font-size:14px; line-height:1.7;">กำลังโหลดข้อมูล…</p>
+          <div id="dpAboutSrc" style="margin-top:8px; font-size:11px; color:var(--muted);"></div>
         </div>
 
         <div class="card">
@@ -1239,10 +1261,12 @@
       const saved = getSaved().includes(p.id);
       $("dpSave").classList.toggle("on", saved);
       $("dpSaveLbl").textContent = saved ? "บันทึกแล้ว" : "บันทึกไว้";
+      renderGallery();
     }
     function openDetail() {
       if (!selected) return;
       renderDetailMeta();
+      startInfo(selected);
       $("detailPage").classList.add("open");
       $("dpBody").scrollTop = 0;
     }
@@ -1265,6 +1289,99 @@
       e.preventDefault();
       try { await navigator.clipboard.writeText($("dpCoord").textContent); showToast("คัดลอกพิกัดแล้ว"); } catch (err) { showToast("คัดลอกไม่สำเร็จ"); }
     });
+
+    /* ===== รูป + ข้อมูลเบื้องต้นจากแหล่งเปิด: Wikipedia / Wikimedia Commons / OpenStreetMap ===== */
+    const INFO_KEY = "pk_info_v1", INFO_TTL = 30 * 864e5;
+    let infoStore = {}, infoLoading = false, galIdx = 0, galSig = "";
+    try { infoStore = JSON.parse(localStorage.getItem(INFO_KEY)) || {}; } catch (e) {}
+    const saveInfo = () => { try { localStorage.setItem(INFO_KEY, JSON.stringify(infoStore)); } catch (e) {} };
+    const plain = h => new DOMParser().parseFromString(h || "", "text/html").body.textContent.trim();
+    const fname = u => decodeURIComponent((String(u).match(/\/([^\/]+)$/) || [])[1] || "").replace(/^\d+px-/, "");
+    const thumbOf = u => /upload\.wikimedia\.org/.test(u) ? u.replace(/\/\d+px-/, "/240px-") : u;
+    async function getJSON(url) {
+      const c = new AbortController(), t = setTimeout(() => c.abort(), 9000);
+      try { const r = await fetch(url, { signal: c.signal }); if (!r.ok) throw new Error(r.status); return await r.json(); }
+      finally { clearTimeout(t); }
+    }
+
+    async function wikiLookup(p) {
+      const name = p.name.replace(/^ที่ทำการ/, "").trim(), core = name.replace("อุทยานแห่งชาติ", "").trim();
+      const sum = async t => { try { const j = await getJSON(`https://th.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(t)}`); return j && j.type === "standard" ? j : null; } catch (e) { return null; } };
+      const near = j => !j.coordinates || haversine(p.lat, p.lng, j.coordinates.lat, j.coordinates.lon) < 80;   // กันบทความผิดที่
+      let j = await sum(name); if (j && !near(j)) j = null;
+      if (!j) {
+        try {
+          const r = await getJSON(`https://th.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(name)}&srlimit=3&format=json&origin=*`);
+          for (const h of r.query.search) { if (!h.title.includes(core)) continue; const k = await sum(h.title); if (k && near(k)) { j = k; break; } }
+        } catch (e) {}
+      }
+      return j;
+    }
+    async function commonsNear(p) {
+      const j = await getJSON(`https://commons.wikimedia.org/w/api.php?action=query&generator=geosearch&ggscoord=${p.lat}|${p.lng}&ggsradius=10000&ggsnamespace=6&ggslimit=25&prop=imageinfo&iiprop=url|mime|extmetadata&iiurlwidth=900&format=json&origin=*`);
+      return Object.values((j.query && j.query.pages) || {})
+        .filter(pg => { const ii = pg.imageinfo && pg.imageinfo[0]; return ii && ii.mime === "image/jpeg" && !/map|logo|flag|sign|diagram|chart|แผนที่|ตรา/i.test(pg.title); })
+        .sort((a, b) => (a.index || 0) - (b.index || 0)).slice(0, 6)
+        .map(pg => { const ii = pg.imageinfo[0], m = ii.extmetadata || {};
+          return { src: ii.thumburl || ii.url, credit: plain(m.Artist && m.Artist.value).slice(0, 50) || "Wikimedia Commons", license: plain(m.LicenseShortName && m.LicenseShortName.value), page: ii.descriptionurl }; });
+    }
+    async function reverseGeo(p) {
+      const j = await getJSON(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${p.lat}&lon=${p.lng}&zoom=10&accept-language=th`);
+      const a = j.address || {};
+      return [a.county || a.city_district || a.suburb, a.state].filter(Boolean).join(" · ");
+    }
+    async function loadParkInfo(p) {
+      const c = infoStore[p.id];
+      if (c && Date.now() - c.t < INFO_TTL) return c;
+      const [w, cm, pl] = await Promise.allSettled([wikiLookup(p), commonsNear(p), reverseGeo(p)]);
+      const wj = w.value || null, images = [];
+      if (wj && wj.originalimage) {
+        const wd = Math.min(900, wj.originalimage.width || 900);
+        images.push({ src: (wj.thumbnail ? wj.thumbnail.source : wj.originalimage.source).replace(/\/\d+px-/, `/${wd}px-`), credit: "Wikipedia", license: "", page: wj.content_urls.desktop.page });
+      }
+      (cm.value || []).forEach(x => { if (!images.some(i => fname(i.src) === fname(x.src))) images.push(x); });
+      const info = { t: Date.now(), extract: wj ? wj.extract || "" : "", wikiUrl: wj ? wj.content_urls.desktop.page : "", images: images.slice(0, 4), place: pl.value || "" };
+      if (wj || info.images.length || info.place) { infoStore[p.id] = info; saveInfo(); }   // ไม่เก็บแคชถ้าเน็ตล้มทั้งหมด
+      return info;
+    }
+
+    function galleryImages(p) {
+      const base = (infoStore[p.id] && infoStore[p.id].images) || [], rv = [];
+      (reviewCache[p.id] || []).forEach(r => (r.images || []).forEach(u => { if (/^https:\/\//.test(u) && rv.length < 4) rv.push({ src: u, credit: "ภาพจากรีวิวของสมาชิก", license: "", page: "" }); }));
+      return [...base, ...rv].slice(0, 4);
+    }
+    function renderGallery() {
+      const p = selected; if (!p) return;
+      const list = galleryImages(p), sig = p.id + "|" + list.map(i => i.src).join(",");
+      if (sig !== galSig) { galSig = sig; galIdx = 0; }
+      const main = $("dpMainImg"), ph = $("dpPh");
+      if (!list.length) {
+        main.style.display = "none"; ph.style.display = "flex";
+        ph.textContent = infoLoading ? "กำลังโหลดรูป…" : "ยังไม่พบรูปของอุทยานนี้ — แนบรูปตอนรีวิวได้เลย";
+        $("dpThumbs").innerHTML = ""; $("dpCredit").innerHTML = ""; return;
+      }
+      const cur = list[Math.min(galIdx, list.length - 1)];
+      if (main.getAttribute("src") !== cur.src) main.src = cur.src;
+      main.style.display = "block"; ph.style.display = "none";
+      main.onclick = () => openLightbox(cur.src);
+      $("dpCredit").innerHTML = `${esc(cur.credit)}${cur.license ? " · " + esc(cur.license) : ""}${cur.page ? ` · <a href="${esc(cur.page)}" target="_blank" rel="noopener">ที่มา</a>` : ""}`;
+      $("dpThumbs").innerHTML = list.length > 1 ? list.map((im, i) => `<button class="dp-th ${i === galIdx ? "on" : ""}" data-i="${i}"><img src="${esc(thumbOf(im.src))}" alt="" loading="lazy"></button>`).join("") : "";
+      $("dpThumbs").querySelectorAll(".dp-th").forEach(b => b.onclick = () => { galIdx = Number(b.dataset.i); renderGallery(); });
+    }
+    function renderAbout() {
+      const p = selected; if (!p) return;
+      const i = infoStore[p.id];
+      $("dpPlace").textContent = i && i.place ? "📍 " + i.place : "";
+      const ex = i && i.extract ? (i.extract.length > 360 ? i.extract.slice(0, 360) + "…" : i.extract) : "";
+      $("dpAbout").textContent = ex || (infoLoading ? "กำลังโหลดข้อมูล…" : "ยังไม่พบข้อมูลเพิ่มเติมจากแหล่งข้อมูลเปิด");
+      $("dpAboutSrc").innerHTML = (ex ? `ข้อความจาก <a href="${esc(i.wikiUrl)}" target="_blank" rel="noopener">Wikipedia</a> (CC BY-SA) · ` : "") + (i && i.place ? "ที่ตั้งจาก OpenStreetMap contributors · " : "") + "รูปจาก Wikimedia Commons";
+    }
+    async function startInfo(p) {
+      infoLoading = !infoStore[p.id]; renderGallery(); renderAbout();
+      try { await loadParkInfo(p); } catch (e) {}
+      infoLoading = false;
+      if (selected === p) { renderGallery(); renderAbout(); }
+    }
 
     loadData().then(() => {
       render(); 
