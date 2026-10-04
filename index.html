@@ -129,6 +129,22 @@
     .thumb { position: relative; width: 72px; height: 72px; overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: #f3f6f3; }
     .thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
     .thumb button { position: absolute; top: 3px; right: 3px; width: 22px; height: 22px; padding: 0; color: #fff; font-size: 15px; line-height: 22px; text-align: center; background: rgba(0,0,0,.65); border: 0; border-radius: 50%; cursor: pointer; }
+    .detail-page { position: absolute; inset: 0; z-index: 1200; display: none; flex-direction: column; background: var(--background); }
+    .detail-page.open { display: flex; }
+    .dp-bar { display: flex; align-items: center; gap: 12px; padding: calc(10px + env(safe-area-inset-top)) 14px 10px; background: #fff; border-bottom: 1px solid var(--border); }
+    .dp-bar b { font-size: 17px; font-weight: 800; }
+    .dp-body { flex: 1; overflow-y: auto; padding: 14px 14px calc(24px + env(safe-area-inset-bottom)); }
+    .dp-head { display: flex; align-items: center; gap: 12px; }
+    .dp-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+    .chip2 { padding: 6px 12px; font-size: 13px; font-weight: 700; background: #fff; border: 1px solid var(--border); border-radius: 999px; }
+    .chip2.green { color: #1a5424; background: var(--primary-soft); border-color: #bcefac; }
+    .dp-actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 12px 0; }
+    .dp-actions button { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 0; font-size: 12px; font-weight: 700; background: #fff; border: 1px solid var(--border); border-radius: 16px; cursor: pointer; }
+    .dp-actions button i { width: 22px; height: 22px; }
+    .dp-actions button.on { color: #1a5424; background: var(--primary-soft); border-color: #bcefac; }
+    .dp-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; font-size: 14px; border-bottom: 1px solid #eef2ee; }
+    .dp-row:last-child { border: 0; }
+    .dp-row > span:first-child { color: var(--muted); flex: 0 0 auto; }
     .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 3000; display: none; align-items: center; justify-content: center; padding: 16px; }
     .modal-overlay.show { display: flex; }
     .modal-box { background: #fff; width: 100%; max-width: 400px; max-height: 90vh; overflow-y: auto; padding: 20px; border-radius: 24px; box-shadow: var(--shadow); }
@@ -239,15 +255,54 @@
         <button class="large-button" id="shareButton"><i data-lucide="share-2"></i>แชร์ประสบการณ์</button>
       </div>
 
-      <div class="primary-actions">
+      <div class="park-actions">
+        <button class="large-button" id="detailBtn"><i data-lucide="info"></i>รายละเอียด</button>
         <button class="large-button primary" id="navigateButton"><i data-lucide="navigation"></i>นำทาง</button>
       </div>
-
-      <div class="review-section" id="reviewSection">
-        <div style="font-weight:700; margin-bottom:6px; font-size:14px;">ความคิดเห็นและรีวิว</div>
-        <div id="reviewList" style="max-height:240px; overflow-y:auto;"></div>
-      </div>
     </article>
+
+    <!-- หน้ารายละเอียดอุทยาน -->
+    <section class="detail-page" id="detailPage">
+      <div class="dp-bar"><button class="close-button" id="dpBack" aria-label="กลับ"><i data-lucide="arrow-left"></i></button><b>รายละเอียดอุทยาน</b></div>
+      <div class="dp-body" id="dpBody">
+        <div class="dp-head">
+          <div class="place-icon"><i data-lucide="trees"></i></div>
+          <div class="place-heading"><h2 id="dpName">-</h2><p id="dpSub" style="display:block"></p></div>
+        </div>
+        <div class="dp-chips" id="dpChips"></div>
+
+        <div class="dp-actions">
+          <button id="dpReview"><i data-lucide="pencil"></i>รีวิว</button>
+          <button id="dpSave"><i data-lucide="bookmark"></i><span id="dpSaveLbl">บันทึกไว้</span></button>
+          <button id="dpShare"><i data-lucide="share-2"></i>แชร์</button>
+          <button id="dpNav"><i data-lucide="navigation"></i>นำทาง</button>
+        </div>
+
+        <div class="card">
+          <div style="font-weight:800; margin-bottom:4px;">ข้อมูลอุทยาน</div>
+          <div class="dp-row"><span>ระยะทางจากคุณ</span><b id="dpDist">-</b></div>
+          <div class="dp-row"><span>ขับรถโดยประมาณ</span><b id="dpDrive">-</b></div>
+          <div class="dp-row"><span>อันดับใกล้คุณ</span><b id="dpRank">-</b></div>
+          <div class="dp-row"><span>พิกัด</span><span><b id="dpCoord"></b> <a href="#" id="dpCopy" style="color:#28772d; font-weight:700;">คัดลอก</a></span></div>
+          <div class="dp-row"><span>แผนที่</span><a href="#" id="dpMapLink" target="_blank" rel="noopener" style="color:#28772d; font-weight:700;">เปิดใน Google Maps</a></div>
+          <div class="dp-row"><span>แหล่งข้อมูล</span><span style="text-align:right">ที่ทำการอุทยานแห่งชาติ (Google My Maps)</span></div>
+        </div>
+
+        <div class="card">
+          <div style="font-weight:800;">ผู้เช็กอิน</div>
+          <div class="who" id="dpWho"></div>
+          <button class="large-button primary checkin" id="dpCheckin"><i data-lucide="circle-check"></i>เช็กอินที่นี่</button>
+        </div>
+
+        <div class="card review-section" id="reviewSection" style="margin-top:0;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+            <b>ความคิดเห็นและรีวิว</b>
+            <button class="large-button" id="dpReview2" style="height:38px; padding:0 14px; font-size:13px;"><i data-lucide="pencil"></i>เขียนรีวิว</button>
+          </div>
+          <div id="reviewList"></div>
+        </div>
+      </div>
+    </section>
 
     <!-- Modal เขียนรีวิว พร้อมอัปโหลดรูปภาพ -->
     <div class="modal-overlay" id="reviewModal">
@@ -426,6 +481,7 @@
 
     function closeCard() {
       selected = null;
+      $("detailPage").classList.remove("open");
       detailCard.classList.remove("open");
       const url = new URL(window.location);
       url.searchParams.delete('park');
@@ -708,6 +764,7 @@
       const listEl = $("reviewList");
       const reviews = reviewCache[parkId];
       if (!reviews) return;
+      renderDetailMeta();
 
       // เก็บข้อความที่กำลังพิมพ์/โฟกัส/ตำแหน่งเลื่อน ไว้ก่อนวาดใหม่
       const drafts = {}; let focusId = null; const scrollTop = listEl.scrollTop;
@@ -1040,7 +1097,7 @@
       }
     }
 
-    function refreshViews() { if (selected) renderWho(selected); renderMe(); renderBoard(); }
+    function refreshViews() { if (selected) { renderWho(selected); renderDetailMeta(); } renderMe(); renderBoard(); }
     let loadSeq = 0;
     async function loadCheckins(force = true) {
       if ((loading && !force) || (!force && Date.now() - lastFetch < 20000)) return;
@@ -1159,6 +1216,55 @@
       else { render(); setTimeout(() => map.invalidateSize(), 50); }
       if (t !== "map") loadCheckins(false);
     }));
+
+    /* ===== หน้ารายละเอียดอุทยาน ===== */
+    const SAVED_KEY = "pk_saved";
+    const getSaved = () => { try { return JSON.parse(localStorage.getItem(SAVED_KEY)) || []; } catch (e) { return []; } };
+    function renderDetailMeta() {
+      const p = selected; if (!p) return;
+      const revs = reviewCache[p.id] || [];
+      const avg = revs.length ? revs.reduce((a, r) => a + (Number(r.rating) || 0), 0) / revs.length : 0;
+      const ci = checkins.filter(c => Number(c.parkId) === p.id), people = new Set(ci.map(c => c.uid)).size;
+      $("dpName").textContent = p.name;
+      $("dpSub").textContent = userPos ? `ห่างจากคุณ ${fmtKm(p.dist)} · ขับรถประมาณ ${fmtDrive(p.dist)}` : "เปิดตำแหน่งเพื่อดูระยะทางจากคุณ";
+      $("dpChips").innerHTML = `<span class="chip2 green">⭐ ${revs.length ? avg.toFixed(1) + " · " + revs.length + " รีวิว" : "ยังไม่มีรีวิว"}</span><span class="chip2">👥 เช็กอินแล้ว ${people} คน (${ci.length} ครั้ง)</span>` + (userPos && parks[0] === p ? '<span class="chip2 green">ใกล้คุณที่สุด</span>' : "");
+      $("dpDist").textContent = userPos ? fmtKm(p.dist) : "-";
+      $("dpDrive").textContent = userPos ? fmtDrive(p.dist) : "-";
+      $("dpRank").textContent = userPos ? `#${parks.indexOf(p) + 1} จาก ${parks.length}` : "-";
+      $("dpCoord").textContent = `${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}`;
+      $("dpMapLink").href = `https://www.google.com/maps?q=${p.lat},${p.lng}`;
+      $("dpWho").innerHTML = $("who").innerHTML;
+      $("dpCheckin").disabled = $("checkinButton").disabled;
+      $("dpCheckin").lastChild.textContent = $("checkinButton").lastChild.textContent;
+      const saved = getSaved().includes(p.id);
+      $("dpSave").classList.toggle("on", saved);
+      $("dpSaveLbl").textContent = saved ? "บันทึกแล้ว" : "บันทึกไว้";
+    }
+    function openDetail() {
+      if (!selected) return;
+      renderDetailMeta();
+      $("detailPage").classList.add("open");
+      $("dpBody").scrollTop = 0;
+    }
+    $("detailBtn").addEventListener("click", openDetail);
+    $("dpBack").addEventListener("click", () => $("detailPage").classList.remove("open"));
+    $("dpReview").addEventListener("click", () => $("reviewBtn").click());
+    $("dpReview2").addEventListener("click", () => $("reviewBtn").click());
+    $("dpShare").addEventListener("click", () => $("shareButton").click());
+    $("dpNav").addEventListener("click", () => $("navigateButton").click());
+    $("dpCheckin").addEventListener("click", () => $("checkinButton").click());
+    $("dpSave").addEventListener("click", () => {
+      if (!selected) return;
+      let a = getSaved();
+      a = a.includes(selected.id) ? a.filter(x => x !== selected.id) : [...a, selected.id];
+      try { localStorage.setItem(SAVED_KEY, JSON.stringify(a)); } catch (e) {}
+      renderDetailMeta();
+      showToast(a.includes(selected.id) ? "บันทึกอุทยานไว้แล้ว" : "เอาออกจากที่บันทึกไว้แล้ว");
+    });
+    $("dpCopy").addEventListener("click", async (e) => {
+      e.preventDefault();
+      try { await navigator.clipboard.writeText($("dpCoord").textContent); showToast("คัดลอกพิกัดแล้ว"); } catch (err) { showToast("คัดลอกไม่สำเร็จ"); }
+    });
 
     loadData().then(() => {
       render(); 
