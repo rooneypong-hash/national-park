@@ -100,6 +100,7 @@
     .primary-actions { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 10px; }
     .large-button { display: flex; align-items: center; justify-content: center; gap: 8px; height: 50px; font-size: 15px; font-weight: 800; background: #fff; border: 1px solid #d6ded7; border-radius: 18px; cursor: pointer; }
     .large-button.primary { color: #153c21; background: var(--primary); border-color: var(--primary); box-shadow: 0 9px 20px rgba(115,220,75,.25); }
+    .large-button.visited { color: var(--muted); background: #eceee9; border-color: var(--border); box-shadow: none; }
     .large-button i { width: 20px; }
 
     .review-section { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
@@ -259,6 +260,7 @@
       <div class="who" id="who"></div>
       
       <button class="large-button primary checkin" id="checkinButton"><i data-lucide="circle-check"></i>เช็กอินที่นี่</button>
+      <button class="large-button" id="suggestNearbyButton" style="display:none;margin-top:8px"><i data-lucide="compass"></i>แนะนำสถานที่ใกล้เคียง</button>
 
       <div class="park-actions">
         <button class="large-button" id="reviewBtn"><i data-lucide="star"></i>รีวิวสถานที่</button>
@@ -532,25 +534,34 @@
       render();
     }
 
+    // แนะนำอุทยานอัตโนมัติตอนเปิดแอปครั้งแรก ต้องรอทั้งตำแหน่ง GPS และข้อมูลเช็กอิน/ล็อกอินล่าสุดให้พร้อมก่อน
+    // (ไม่งั้น GPS จะเสร็จเร็วกว่าข้อมูลเช็กอินที่โหลดจากเซิร์ฟเวอร์ ทำให้หลุดแนะนำที่เคยเช็กอินไปแล้วออกมา)
+    let firstAutoSelect = true, geoReady = false, dataReady = false;
+    function tryAutoSelect() {
+      if (!firstAutoSelect || !geoReady || !dataReady) return;
+      if (new URLSearchParams(window.location.search).has('park')) { firstAutoSelect = false; return; }
+      if (!parks.length) return;
+      firstAutoSelect = false;
+      selectPark(nearestUnvisited() || parks[0], true);
+    }
+
     function locate(auto = false) {
-      if (!navigator.geolocation) { showToast("อุปกรณ์นี้ไม่รองรับการระบุตำแหน่ง"); render(); return; }
+      if (!navigator.geolocation) { showToast("อุปกรณ์นี้ไม่รองรับการระบุตำแหน่ง"); geoReady = true; tryAutoSelect(); render(); return; }
       if (!auto) showToast("กำลังค้นหาตำแหน่งของคุณ");
       navigator.geolocation.getCurrentPosition(pos => {
         userPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         if (userMarker) map.removeLayer(userMarker);
         userMarker = L.marker([userPos.lat, userPos.lng], { icon: L.divIcon({ className: "", html: '<div class="user-marker"></div>', iconSize: [20, 20], iconAnchor: [10, 10] }), zIndexOffset: 1000 }).addTo(map);
         render();
-        if (parks.length && firstAutoSelect && !new URLSearchParams(window.location.search).has('park')) {
-          firstAutoSelect = false;
-          selectPark(nearestUnvisited() || parks[0], true);
-        }
+        geoReady = true;
+        tryAutoSelect();
       }, () => {
         showToast("กรุณาอนุญาตการเข้าถึงตำแหน่ง");
         render();
+        geoReady = true;
+        tryAutoSelect();
       }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
     }
-
-    let firstAutoSelect = true;
 
     document.querySelectorAll(".filter-chip").forEach(btn => btn.addEventListener("click", () => {
       document.querySelectorAll(".filter-chip").forEach(b => b.classList.remove("active"));
@@ -1174,10 +1185,14 @@
 
     const dayTH = d => new Date(d).toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" });
     function renderWho(p) {
-      const done = !!me && checkins.some(c => c.uid === me.id && Number(c.parkId) === p.id && dayTH(c.ts) === dayTH(Date.now()));
+      const mine = me ? checkins.filter(c => c.uid === me.id && Number(c.parkId) === p.id) : [];
+      const done = mine.some(c => dayTH(c.ts) === dayTH(Date.now()));   // เช็กอินแล้ววันนี้
+      const everVisited = mine.length > 0;                              // เคยเช็กอินมาก่อน (วันอื่น)
       const btn = $("checkinButton");
       btn.disabled = done;
-      btn.lastChild.textContent = done ? "เช็กอินแล้ววันนี้ ✓" : "เช็กอินที่นี่";
+      btn.classList.toggle("visited", !done && everVisited);
+      btn.lastChild.textContent = done ? "เช็กอินแล้ววันนี้ ✓" : (everVisited ? "เคยมาแล้ว" : "เช็กอินที่นี่");
+      $("suggestNearbyButton").style.display = everVisited ? "" : "none";
       const m = new Map();
       checkins.filter(c => Number(c.parkId) === p.id).forEach(c => { if (!m.has(c.uid)) m.set(c.uid, c); });
       const users = [...m.values()];
@@ -1202,6 +1217,12 @@
         if (/เซสชัน/.test(e.message)) { clearSession(); renderMe(); }
       }
       if (selected) renderWho(selected); renderMe(); renderBoard();
+    });
+
+    $("suggestNearbyButton").addEventListener("click", () => {
+      const next = nearestUnvisited();
+      if (!next) { showToast("คุณเช็กอินครบทุกอุทยานแล้ว เก่งมาก! 🎉"); return; }
+      selectPark(next, true);
     });
 
     async function deleteCheckin(parkId) {
@@ -1310,7 +1331,7 @@
       const ci = checkins.filter(c => Number(c.parkId) === p.id), people = new Set(ci.map(c => c.uid)).size;
       $("dpName").textContent = p.name;
       $("dpSub").textContent = userPos ? `ห่างจากคุณ ${fmtKm(p.dist)} · ขับรถประมาณ ${fmtDrive(p.dist)}` : "เปิดตำแหน่งเพื่อดูระยะทางจากคุณ";
-      $("dpChips").innerHTML = `<span class="chip2 green">⭐ ${revs.length ? avg.toFixed(1) + " · " + revs.length + " รีวิว" : "ยังไม่มีรีวิว"}</span><span class="chip2">👥 เช็กอินแล้ว ${people} คน (${ci.length} ครั้ง)</span>` + (userPos && parks[0] === p ? '<span class="chip2 green">ใกล้คุณที่สุด</span>' : "");
+      $("dpChips").innerHTML = `<span class="chip2 green">⭐ ${revs.length ? avg.toFixed(1) + " · " + revs.length + " รีวิว" : "ยังไม่มีรีวิว"}</span><span class="chip2">👥 เช็กอินแล้ว ${people} คน (${ci.length} ครั้ง)</span>` + (userPos && nearestUnvisited() === p ? '<span class="chip2 green">ใกล้คุณที่สุด</span>' : "");
       $("dpDist").textContent = userPos ? fmtKm(p.dist) : "-";
       $("dpDrive").textContent = userPos ? fmtDrive(p.dist) : "-";
       $("dpRank").textContent = userPos ? `#${parks.indexOf(p) + 1} จาก ${parks.length}` : "-";
@@ -1318,6 +1339,7 @@
       $("dpMapLink").href = `https://www.google.com/maps?q=${p.lat},${p.lng}`;
       $("dpWho").innerHTML = $("who").innerHTML;
       $("dpCheckin").disabled = $("checkinButton").disabled;
+      $("dpCheckin").classList.toggle("visited", $("checkinButton").classList.contains("visited"));
       $("dpCheckin").lastChild.textContent = $("checkinButton").lastChild.textContent;
       const saved = getSaved().includes(p.id);
       $("dpSave").classList.toggle("on", saved);
@@ -1448,14 +1470,20 @@
       render(); 
       locate(true);
       
-      initLine().then(() => { 
+      const initLineDone = initLine().then(() => { 
         renderMe(); 
         if (selected) renderWho(selected); 
         if (selected) renderReviews(selected.id);  // วาดรีวิวใหม่ เมื่อรู้แล้วว่าใครล็อกอินอยู่ (สถานะหัวใจ/ปุ่มลบ)
       });
       
       renderBoard();
-      loadCheckins();
+      const loadCheckinsDone = loadCheckins();
+
+      // ต้องรู้ทั้ง "เป็นใคร" (initLine) และ "เช็กอินอะไรไปแล้วบ้าง" (loadCheckins) ก่อน ถึงจะตัดสินใจแนะนำที่ยังไม่เช็กอินได้ถูกต้อง
+      Promise.all([initLineDone, loadCheckinsDone]).then(() => {
+        dataReady = true;
+        tryAutoSelect();
+      });
 
       const urlParams = new URLSearchParams(window.location.search);
       const parkParam = urlParams.get('park');
